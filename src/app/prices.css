@@ -1,0 +1,181 @@
+/* ---------------------------------------------------------------------------
+ * Price comparison (src/app/prices/page.tsx)
+ *
+ * The table is read across, not down: for each brand the eye should land on the
+ * median, then check the bar to see how wide a band that median sits in. So the
+ * median is the only emphasised number, and the bar carries the shape.
+ * ------------------------------------------------------------------------- */
+
+.basis-note {
+  margin: 0.4rem 0 1.4rem;
+  font-size: var(--text-sm);
+  max-width: 72ch;
+}
+
+.axis-note {
+  margin-top: 1rem;
+  font-size: var(--text-xs);
+  max-width: 82ch;
+  line-height: 1.6;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.price-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+}
+
+.price-table th,
+.price-table td {
+  padding: 0.72rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.price-table thead th {
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.price-table td.num,
+.price-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.price-table td.strong {
+  font-weight: 620;
+  color: var(--ink);
+}
+
+.price-table tbody tr:hover {
+  background: var(--surface-sunken);
+}
+
+/* The scoped brand keeps its row findable without removing the comparison —
+   filtering this table to one brand would defeat its purpose. */
+.price-table tbody tr[data-scoped='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.brand-cell {
+  font-weight: 560;
+  white-space: nowrap;
+}
+
+.brand-cell a {
+  color: var(--ink);
+  border-bottom: 1px solid transparent;
+}
+
+.brand-cell a:hover {
+  border-bottom-color: var(--rule-strong);
+}
+
+/* --- the range bar ------------------------------------------------------- */
+.range-col {
+  width: 34%;
+  min-width: 220px;
+}
+
+.range-bar {
+  position: relative;
+  height: 18px;
+}
+
+.range-track {
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--rule);
+  border-radius: 2px;
+}
+
+.range-fill {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: var(--ink-muted);
+}
+
+.range-median {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 15px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--ink);
+}
+
+/* One hue per brand, so a brand keeps its colour across the page. Assigned by
+   slug rather than by row index: sorting must not reshuffle the palette. */
+.range-joola { background: oklch(55% 0.13 250); }
+.range-selkirk { background: oklch(52% 0.12 160); }
+.range-crbn { background: oklch(56% 0.14 30); }
+
+/* --- tier chips ---------------------------------------------------------- */
+.tier-mix {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.tier {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.tier b {
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+}
+
+.tier-value {
+  background: var(--positive-soft);
+  color: var(--positive);
+}
+
+.tier-mid {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.tier-premium {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .range-col {
+    min-width: 160px;
+  }
+}
+
+/* The scoped row is tinted with the accent, which is also the premium chip's
+   background — the chip vanished into the row. Chips on a scoped row sit on the
+   plain surface instead so every tier stays legible. */
+.price-table tbody tr[data-scoped='true'] .tier-premium {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}

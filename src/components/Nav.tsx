@@ -7,6 +7,7 @@ const LINKS = [
   { href: '/', label: 'Overview' },
   { href: '/catalogue', label: 'Catalogue' },
   { href: '/reviews', label: 'Reviews' },
+  { href: '/prices', label: 'Prices' },
   { href: '/discounts', label: 'Discounts' },
   { href: '/changes', label: 'Changes' },
   { href: '/pipeline', label: 'Pipeline' },
@@ -21,7 +22,7 @@ const LINKS = [
  * rather than catalogue, and it ignores the parameter. Sending a stale brand
  * there would leave the rail highlighting a scope the page does not honour.
  */
-const BRAND_AWARE = new Set(['/', '/catalogue', '/reviews', '/discounts', '/changes'])
+const BRAND_AWARE = new Set(['/', '/catalogue', '/reviews', '/prices', '/discounts', '/changes'])
 
 export function Nav() {
   const pathname = usePathname()
