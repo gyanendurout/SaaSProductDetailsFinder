@@ -1,0 +1,4 @@
+# Supabase CLI project config.
+#   supabase link --project-ref vbyaqzkagzhatdqitfko
+#   supabase db push
+project_id = "vbyaqzkagzhatdqitfko"

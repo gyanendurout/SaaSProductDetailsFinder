@@ -1,0 +1,19 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+
+# Next.js build output and the incremental type-check cache — both regenerate,
+# and .next in particular is large and machine-specific.
+.next/
+out/
+tsconfig.tsbuildinfo
+
+dist/
+storage/
+*.log
+.DS_Store
+Thumbs.db
+
+# Scratch scripts used while debugging; the real ones are checked in by name.
+scripts/_*

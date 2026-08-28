@@ -1,0 +1,485 @@
+/* ---------------------------------------------------------------------------
+   Reviews
+
+   Kept in its own file rather than appended to globals.css: it is the largest
+   single surface in the app and the only one with a genuinely different visual
+   problem — long ragged prose rather than dense numeric rows.
+
+   The design decision throughout is that a review is a piece of writing, so it
+   gets a measure, a serif face and real leading, while everything around it
+   (stars, flags, provenance) stays in the compact UI face. A brand reply is
+   indented and tinted so the thread reads as a conversation rather than as two
+   unrelated paragraphs.
+   --------------------------------------------------------------------------- */
+
+/* --- search ---------------------------------------------------------------- */
+.review-search {
+  display: flex;
+  gap: var(--gap-tight);
+  align-items: center;
+  margin-bottom: var(--gap-loose);
+  flex-wrap: wrap;
+}
+.review-search input[type='search'] {
+  flex: 1 1 22rem;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-base);
+  padding: 0.6rem 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  transition: border-color 130ms ease, box-shadow 130ms ease;
+}
+.review-search input[type='search']:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* --- summary --------------------------------------------------------------- */
+.review-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+  gap: var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap-loose);
+}
+@media (max-width: 860px) {
+  .review-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- stars ----------------------------------------------------------------- */
+/* Two stacked copies of the same row: a track in outline and a fill clipped to
+   the rating. This is what makes a 4.39 average render as 4.39 rather than as
+   four stars and a rounding error. */
+.stars {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.stars[data-empty='true'] {
+  color: var(--ink-faint);
+  line-height: inherit;
+}
+.stars-track,
+.stars-fill {
+  display: inline-flex;
+  gap: 1px;
+}
+.stars-track {
+  color: var(--rule-strong);
+}
+.stars-fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  width: var(--star-fill, 0%);
+  color: var(--warning);
+}
+
+/* --- histogram ------------------------------------------------------------- */
+.histogram {
+  display: grid;
+  gap: 2px;
+}
+.histogram-row {
+  display: grid;
+  grid-template-columns: 2.2rem 1fr 3.5rem;
+  align-items: center;
+  gap: var(--gap-tight);
+  padding: 0.2rem 0.3rem;
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  transition: background 130ms ease;
+}
+.histogram-row:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.histogram-row[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.histogram-label {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+.histogram-track {
+  height: 0.55rem;
+  background: var(--surface-sunken);
+  border-radius: 100px;
+  overflow: hidden;
+}
+.histogram-bar {
+  display: block;
+  height: 100%;
+  border-radius: 100px;
+  background: var(--warning);
+  transition: width 220ms ease;
+}
+/* Colour carries meaning here: the bottom two bars are the ones worth looking
+   at, so they are not the same colour as the top three. */
+.histogram-bar[data-star='2'],
+.histogram-bar[data-star='1'] {
+  background: var(--danger);
+}
+.histogram-bar[data-star='5'] {
+  background: var(--positive);
+}
+.histogram-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+}
+
+/* --- product filter -------------------------------------------------------- */
+.review-products {
+  margin-bottom: var(--gap);
+  padding: var(--gap-tight) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.review-products summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  padding: var(--gap-hair) 0;
+}
+.review-products summary:hover {
+  color: var(--ink);
+}
+.review-products .chips {
+  margin-top: var(--gap-tight);
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.review-count-line {
+  margin-bottom: var(--gap);
+}
+
+/* --- the list -------------------------------------------------------------- */
+.review-list {
+  display: grid;
+  gap: var(--gap);
+}
+
+.review {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: var(--gap);
+  /* A quiet left rule tinted by rating; see [data-*] rules on .review-head. */
+  border-left: 3px solid var(--rule);
+}
+.review:hover {
+  border-color: var(--rule-strong);
+}
+
+.review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap-tight) var(--gap);
+  margin-bottom: var(--gap-tight);
+}
+.review-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-hair);
+}
+.review-score {
+  font-size: var(--text-sm);
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+.review-meta {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.review-author {
+  font-weight: 600;
+  color: var(--ink);
+}
+.review-flags {
+  display: inline-flex;
+  gap: var(--gap-hair);
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.review-product {
+  font-size: var(--text-sm);
+  margin: 0 0 var(--gap-tight);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-hair) var(--gap-tight);
+  align-items: center;
+}
+
+.review-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1.25;
+  margin: 0 0 var(--gap-hair);
+}
+.review-body {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  /* A measure. Review text is the one place in this app with real prose, and
+     full-width lines at this size are genuinely hard to track back. */
+  max-width: 68ch;
+  margin: 0;
+  white-space: pre-line;
+}
+
+.review-proscons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--gap-tight) var(--gap);
+  margin: var(--gap-tight) 0 0;
+  font-size: var(--text-sm);
+}
+.review-proscons dt {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+}
+.review-proscons dd {
+  margin: 0;
+}
+
+.review-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-hair) var(--gap);
+  list-style: none;
+  padding: 0;
+  margin: var(--gap-tight) 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+/* --- the reply chain ------------------------------------------------------- */
+.review-replies {
+  display: grid;
+  gap: var(--gap-tight);
+  margin-top: var(--gap);
+}
+.review-reply {
+  background: var(--surface-sunken);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: var(--gap-tight) var(--gap);
+  /* Indented so the thread reads as an exchange, not as a second review. */
+  margin-left: var(--gap);
+}
+@media (max-width: 640px) {
+  .review-reply {
+    margin-left: 0;
+  }
+}
+.review-reply-head {
+  margin: 0 0 var(--gap-hair);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+}
+.review-reply-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  max-width: 68ch;
+}
+
+.review-foot {
+  margin: var(--gap) 0 0;
+  padding-top: var(--gap-tight);
+  border-top: 1px solid var(--rule);
+  font-size: var(--text-xs);
+}
+
+/* --- pager ----------------------------------------------------------------- */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  margin-top: var(--gap-loose);
+}
+.pager [data-disabled='true'] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Loading skeleton (src/app/reviews/loading.tsx)
+ *
+ * Deliberately low-contrast and slow: a skeleton that pulses hard reads as an
+ * error state. prefers-reduced-motion drops the animation entirely and leaves a
+ * flat block, which still communicates "pending" without the movement.
+ * ------------------------------------------------------------------------- */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--rule) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  border-radius: 4px;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--surface-sunken);
+  }
+}
+
+.skeleton-search {
+  height: 46px;
+  margin: 1.5rem 0 2rem;
+}
+
+.skeleton-stat {
+  padding: 1rem 1.25rem;
+  border-right: 1px solid var(--rule);
+}
+
+.skeleton-stat:last-child {
+  border-right: 0;
+}
+
+.skeleton-line {
+  height: 12px;
+}
+
+.skeleton-label {
+  width: 60%;
+  margin-bottom: 0.75rem;
+}
+
+.skeleton-value {
+  width: 45%;
+  height: 26px;
+}
+
+.skeleton-filters {
+  height: 32px;
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.skeleton-filters-short {
+  width: 42%;
+  margin-top: 0.6rem;
+}
+
+.skeleton-review {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.skeleton-head {
+  width: 30%;
+}
+
+.skeleton-title {
+  width: 45%;
+  height: 18px;
+}
+
+.skeleton-short {
+  width: 70%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Product picker search (src/components/ProductFilter.tsx)
+ * ------------------------------------------------------------------------- */
+.product-search {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.9rem 0 0.4rem;
+}
+
+.product-search input[type='search'] {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.product-search input[type='search']::placeholder {
+  color: var(--ink-faint);
+}
+
+.product-search input[type='search']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.product-search-clear {
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--ink-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.product-search-clear:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.product-search-count {
+  margin: 0 0 0.6rem;
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.empty-inline {
+  margin: 0.75rem 0 0;
+  font-size: var(--text-sm, 0.875rem);
+}

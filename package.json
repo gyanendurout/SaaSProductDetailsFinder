@@ -1,0 +1,50 @@
+{
+  "name": "product-finder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-brand, multi-country product catalogue and price/stock trend collector.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "crawl": "tsx src/cli.ts crawl",
+    "crawl:dry": "tsx src/cli.ts crawl --dry-run",
+    "reviews": "tsx src/cli.ts crawl --stages categories,catalog,reviews",
+    "reviews:full": "tsx src/cli.ts crawl --stages categories,catalog,reviews --full-reviews",
+    "reviews:dry": "tsx src/cli.ts crawl --stages categories,catalog,reviews --dry-run",
+    "reviews:probe": "tsx scripts/probe-reviews.ts",
+    "sites": "tsx src/cli.ts sites",
+    "report": "tsx src/cli.ts report",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "migrate:dry": "tsx scripts/migrate.ts --dry",
+    "sync": "tsx src/cli.ts sync",
+    "sync:dry": "tsx src/cli.ts sync --dry-run",
+    "schema": "tsx scripts/build-schema.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@types/pg": "^8.23.1",
+    "dotenv": "^16.4.5",
+    "next": "^15.5.24",
+    "pg": "^8.23.0",
+    "playwright": "^1.47.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1",
+    "undici": "^8.10.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
