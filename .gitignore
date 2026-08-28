@@ -1,4 +1,8 @@
 node_modules/
+
+# Real credentials. .env.example is tracked on purpose and must stay that way,
+# so the ignore is written per-file rather than as a blanket .env* — that would
+# swallow the example and leave a fresh clone with nothing to copy from.
 .env
 .env.local
 .env.*.local
@@ -8,6 +12,9 @@ node_modules/
 .next/
 out/
 tsconfig.tsbuildinfo
+
+# Vercel CLI link state — machine-local, points at one account's project.
+.vercel
 
 dist/
 storage/
