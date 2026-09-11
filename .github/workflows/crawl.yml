@@ -1,11 +1,21 @@
-name: Daily catalogue crawl
+name: Catalogue crawl
 
-# The trend history only exists if this runs. A missed day is a permanent hole,
-# so the schedule is deliberately early and the job is allowed to finish slowly
-# rather than crawl the site aggressively.
+# Manual only, deliberately.
+#
+# This ran daily at 09:00 UTC and failed every morning, mailing a failure
+# notice each time. A daily alert that always fires teaches you to ignore
+# alerts, which is worse than having none — so the schedule is off until
+# someone asks for it back.
+#
+# To restore it, uncomment the schedule block below. Nothing else is needed;
+# the failure it used to produce is fixed (see node-version).
+#
+# Note the trade-off being accepted: trend history only accumulates on days
+# this runs, and a missed day is a permanent hole — snapshots cannot be
+# backfilled from a site that has already changed its prices.
 on:
-  schedule:
-    - cron: '0 9 * * *' # 09:00 UTC daily
+  # schedule:
+  #   - cron: '0 9 * * *' # 09:00 UTC daily
   workflow_dispatch:
     inputs:
       brand:
@@ -36,7 +46,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Not 20. undici 8 calls worker_threads.markAsUncloneable, which does
+          # not exist before 22.19, so every scheduled run died in `npm test`
+          # with "webidl.util.markAsUncloneable is not a function" — long before
+          # it reached the crawl. supabase-js warns off Node 20 for the same
+          # generation of reasons. Keep this at or above the engines floor in
+          # package.json.
+          node-version: '24'
           cache: npm
 
       - run: npm ci
@@ -44,6 +60,18 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+      # Fail here rather than inside the crawl, where an absent secret surfaces
+      # as an opaque connection error several minutes into a run.
+      - name: Check credentials are configured
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set as repository secrets before a crawl can run."
+            exit 1
+          fi
 
       - name: Crawl
         env:

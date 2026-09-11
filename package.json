@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Multi-brand, multi-country product catalogue and price/stock trend collector.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "next dev",
