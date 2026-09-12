@@ -8,12 +8,34 @@ import {
   getReviewFacets,
   getReviewedProducts,
   searchReviews,
+  type ReviewFacets,
+  type ReviewPage,
   type ReviewQuery,
   type ReviewSort,
 } from '../../lib/review-queries.js'
-import { clampPageSize, lastPageOf } from '../../lib/pagination.js'
+import { DEFAULT_REVIEW_PAGE_SIZE, clampPageSize, lastPageOf } from '../../lib/pagination.js'
+import { createLogger } from '../../lib/logger.js'
 
 export const dynamic = 'force-dynamic'
+
+const log = createLogger('reviews-page')
+
+/** What the page renders when the search could not be run at all. */
+const EMPTY_PAGE: ReviewPage = {
+  rows: [],
+  responses: new Map(),
+  total: 0,
+  page: 1,
+  pageSize: DEFAULT_REVIEW_PAGE_SIZE,
+}
+const EMPTY_FACETS: ReviewFacets = {
+  total: 0,
+  averageRating: null,
+  withText: 0,
+  withResponse: 0,
+  verified: 0,
+  distribution: [],
+}
 
 interface SearchParams {
   q?: string
@@ -53,11 +75,33 @@ export default async function ReviewsPage({
 
   // Facets and brand chips do not depend on the page, so they are issued
   // alongside the page query rather than after it.
-  const [page, facets, products] = await Promise.all([
-    searchReviews(query),
-    getReviewFacets(query),
-    getReviewedProducts(query.brand),
-  ])
+  //
+  // Wrapped, because a search term must never be able to take the route down.
+  // Some strings — 'OR 1=1 --' among them — are rejected by the WAF in front of
+  // the database, which answers with an HTML block page rather than JSON. That
+  // surfaced as an unhandled throw and the whole page became "Something went
+  // wrong", on an HTTP 200 so nothing monitored it. The query is parameterised
+  // and the term is escaped (see toIlikeValue), so this is a false positive at
+  // the edge rather than an injection — but the fix a reader needs is the page
+  // still rendering.
+  let failure: 'none' | 'rejected' | 'unavailable' = 'none'
+  let page = EMPTY_PAGE
+  let facets = EMPTY_FACETS
+  let products: Awaited<ReturnType<typeof getReviewedProducts>> = []
+  try {
+    ;[page, facets, products] = await Promise.all([
+      searchReviews(query),
+      getReviewFacets(query),
+      getReviewedProducts(query.brand),
+    ])
+  } catch (error) {
+    failure = classifyFailure(error)
+    log.warn('review search failed; rendering the empty state', {
+      q: query.q ?? null,
+      failure,
+      message: describeError(error).slice(0, 160),
+    })
+  }
 
   const lastPage = lastPageOf(page.total, page.pageSize)
   const href = (overrides: Partial<SearchParams>) => buildHref(params, overrides)
@@ -203,6 +247,24 @@ export default async function ReviewsPage({
         </p>
       )}
 
+      {failure !== 'none' && (
+        <div className="notice" data-tone="danger">
+          {failure === 'rejected' ? (
+            <>
+              <strong>That search term was rejected.</strong> The firewall in front of the
+              database blocks a few punctuation patterns before the query runs. Try the words
+              without the punctuation, or{' '}
+              <Link href={href({ q: undefined, page: undefined })}>clear the search</Link>.
+            </>
+          ) : (
+            <>
+              <strong>Reviews could not be loaded just now.</strong> The database did not answer
+              in time — this is usually brief. Reload the page to try again.
+            </>
+          )}
+        </div>
+      )}
+
       <p className="muted review-count-line">
         {page.total === 0
           ? 'No reviews match those filters.'
@@ -237,6 +299,38 @@ export default async function ReviewsPage({
   )
 }
 
+/**
+ * Why the read failed, because the two causes need different words.
+ *
+ * A term the WAF rejects is the user's to fix — drop the punctuation. A gateway
+ * timeout is not, and telling someone their search term was rejected when the
+ * database merely timed out sends them rewriting a query that was always fine.
+ */
+function classifyFailure(error: unknown): 'rejected' | 'unavailable' {
+  const text = describeError(error)
+  // 'rejected' only on positive evidence — the WAF answers with an HTML block
+  // page or a 403 where JSON was expected. Everything else, including the empty
+  // message supabase-js produces on a gateway timeout, is treated as the
+  // database being briefly unavailable.
+  //
+  // The default matters. Telling someone their search term was rejected when
+  // the database merely timed out sends them rewriting a query that was always
+  // fine: `100` and `grip` both drew that message during testing, purely
+  // because the instance was busy.
+  const blocked = /<!DOCTYPE html|<html|forbidden|403|blocked|access denied/i.test(text)
+  return blocked ? 'rejected' : 'unavailable'
+}
+
+/** supabase-js can throw an Error with an empty message, so look wider. */
+function describeError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  try {
+    return JSON.stringify(error) || String(error)
+  } catch {
+    return String(error)
+  }
+}
+
 function toQuery(params: SearchParams, brandSlug?: string): ReviewQuery {
   const rating = Number(params.rating)
   return {
@@ -255,7 +349,9 @@ function toQuery(params: SearchParams, brandSlug?: string): ReviewQuery {
     from: params.from,
     to: params.to,
     sort: (SORTS.find((s) => s.value === params.sort)?.value ?? 'newest') as ReviewSort,
-    page: Math.max(1, Number(params.page) || 1),
+    // Floored as well as clamped: '2.7' otherwise produced an offset that
+    // straddled two pages and repeated rows across them.
+    page: Math.max(1, Math.floor(Number(params.page)) || 1),
     pageSize: clampPageSize(params.size),
   }
 }

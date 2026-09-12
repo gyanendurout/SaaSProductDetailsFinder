@@ -124,8 +124,11 @@ const VARIANT_COLUMNS =
   'observed_at,price,compare_at_price,currency,is_on_sale,discount_pct,is_available'
 
 export async function getModels(brandSlug?: string): Promise<ModelOverview[]> {
-  const rows = await selectAll<ModelOverview>('v_model_overview', MODEL_COLUMNS, (q) =>
-    brandSlug ? q.eq('brand_slug', brandSlug) : q,
+  const rows = await selectAll<ModelOverview>(
+    'v_model_overview',
+    MODEL_COLUMNS,
+    (q) => (brandSlug ? q.eq('brand_slug', brandSlug) : q),
+    { orderBy: 'model_id' },
   )
   return rows.sort(
     (a, b) =>
@@ -151,12 +154,17 @@ export async function getVariants(
   modelId?: string,
   brandSlug?: string,
 ): Promise<VariantCurrent[]> {
-  const rows = await selectAll<VariantCurrent>('v_variant_current', VARIANT_COLUMNS, (q) => {
-    let query = q
-    if (modelId) query = query.eq('model_id', modelId)
-    if (brandSlug) query = query.eq('brand_slug', brandSlug)
-    return query
-  })
+  const rows = await selectAll<VariantCurrent>(
+    'v_variant_current',
+    VARIANT_COLUMNS,
+    (q) => {
+      let query = q
+      if (modelId) query = query.eq('model_id', modelId)
+      if (brandSlug) query = query.eq('brand_slug', brandSlug)
+      return query
+    },
+    { orderBy: 'variant_id' },
+  )
   return rows
     .filter((v) => v.is_in_assortment)
     .sort(
@@ -167,8 +175,11 @@ export async function getVariants(
 }
 
 export async function getDiscounts(limit = 60, brandSlug?: string): Promise<VariantCurrent[]> {
-  const rows = await selectAll<VariantCurrent>('v_variant_current', VARIANT_COLUMNS, (q) =>
-    brandSlug ? q.eq('brand_slug', brandSlug) : q,
+  const rows = await selectAll<VariantCurrent>(
+    'v_variant_current',
+    VARIANT_COLUMNS,
+    (q) => (brandSlug ? q.eq('brand_slug', brandSlug) : q),
+    { orderBy: 'variant_id' },
   )
   return rows
     .filter((v) => v.is_on_sale && v.is_in_assortment)

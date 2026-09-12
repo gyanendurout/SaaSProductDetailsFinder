@@ -12,8 +12,16 @@ import { fmtMoney, fmtWhen } from '../../../lib/format.js'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Postgres casts this straight to uuid, so `/models/abc` reached the database
+ * as a malformed literal and threw — a 500 for what is plainly a 404. Checked
+ * here rather than caught later, because a bad shape is not a lookup failure.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export default async function ModelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  if (!UUID.test(id)) notFound()
   const [model, variants] = await Promise.all([getModel(id), getVariants(id)])
   if (!model) notFound()
 

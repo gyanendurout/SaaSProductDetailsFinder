@@ -1,11 +1,11 @@
 import Link from 'next/link'
-import type { ProductCoverage } from '../../lib/review-analysis.js'
+import { materialGaps, type ModelCoverage } from '../../lib/review-analysis.js'
 import type { EnrichedFact, ReviewFact } from '../../lib/review-stats.js'
 import { averageOf } from '../../lib/review-stats.js'
 import {
   bucketize,
   growthRatio,
-  recentSplit,
+  rollingWindows,
   trajectory,
   type DatedPoint,
 } from '../../lib/review-trends.js'
@@ -24,6 +24,38 @@ function dated(facts: ReviewFact[]): DatedPoint[] {
 /* ---------------------------------------------------------------------------
  * Shared marks
  * ------------------------------------------------------------------------ */
+
+/**
+ * A plain-language explainer attached to a section heading.
+ *
+ * Not the native `title` attribute: that needs a mouse, waits a second, cannot
+ * be styled, and is invisible to touch. This opens on hover AND on keyboard
+ * focus, so it is reachable by tab as well as by pointer.
+ *
+ * Every one carries a worked example. "Share of the brand's reviews" is
+ * abstract; "38% means 38 of every 100 CRBN reviews are about this paddle" is
+ * not, and the example is what makes a column readable by someone who did not
+ * build the table.
+ */
+export function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="infotip" tabIndex={0} role="note" aria-label={`What ${label} means`}>
+      <span className="infotip-mark" aria-hidden="true">
+        ?
+      </span>
+      <span className="infotip-body">{children}</span>
+    </span>
+  )
+}
+
+/** A worked example line inside a tooltip. */
+export function Eg({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="infotip-eg">
+      <strong>Example:</strong> {children}
+    </span>
+  )
+}
 
 /** A volume sparkline. Bars, not a line: these are counts, not a continuum. */
 function Spark({ values, title }: { values: number[]; title: string }) {
@@ -82,13 +114,22 @@ function RatingLine({ points, title }: { points: Array<number | null>; title: st
  * 1 + 2 — Momentum: review velocity and rating trajectory
  * ------------------------------------------------------------------------ */
 
+/**
+ * Four 90-day windows rather than two.
+ *
+ * Two windows answer "up or down since last quarter", which cannot tell a blip
+ * from the fourth quarter of a slide. Four cover a rolling year, so the shape
+ * of a rise or a fall is visible in the row itself.
+ */
+const WINDOW_COUNT = 4
+
 export function MomentumPanel({
   facts,
   coverage,
   windowDays = 90,
 }: {
   facts: ReviewFact[]
-  coverage: ProductCoverage[]
+  coverage: ModelCoverage[]
   windowDays?: number
 }) {
   const byModel = new Map<string, { name: string; brand: string; rows: ReviewFact[] }>()
@@ -102,60 +143,76 @@ export function MomentumPanel({
   const rows = [...byModel]
     .map(([id, g]) => {
       const points = dated(g.rows)
-      const { recent, prior } = recentSplit(points, windowDays)
+      const windows = rollingWindows(points, windowDays, WINDOW_COUNT)
       const months = bucketize(points, 'month')
-      const traj = trajectory(months)
-      const recentRated = recent.filter((p) => p.rating !== null)
-      const priorRated = prior.filter((p) => p.rating !== null)
-      const mean = (xs: DatedPoint[]) =>
-        xs.length === 0 ? null : xs.reduce((n, x) => n + (x.rating ?? 0), 0) / xs.length
       return {
         id,
         name: g.name,
         brand: g.brand,
         total: g.rows.length,
-        recent: recent.length,
-        prior: prior.length,
-        growth: growthRatio(recent.length, prior.length),
+        windows,
+        recent: windows[0]?.points.length ?? 0,
+        growth: growthRatio(windows[0]?.points.length ?? 0, windows[1]?.points.length ?? 0),
         months,
-        traj,
-        recentAvg: mean(recentRated),
-        priorAvg: mean(priorRated),
+        traj: trajectory(months),
+        // Oldest window holding a rating against the newest that does — the
+        // widest honest "then vs now" this row can support.
+        oldestAvg: [...windows].reverse().find((w) => w.average !== null)?.average ?? null,
+        newestAvg: windows.find((w) => w.average !== null)?.average ?? null,
       }
     })
     .filter((r) => r.total >= 20)
     .sort((a, b) => b.recent - a.recent || b.total - a.total)
     .slice(0, 25)
 
-  const truncated = coverage
-    .filter((c) => c.reported !== null && c.reported > c.stored * 1.05)
-    .sort((a, b) => (b.reported! - b.stored) - (a.reported! - a.stored))
+  const gaps = materialGaps(coverage)
 
   return (
     <>
-      {truncated.length > 0 && (
+      {gaps.length > 0 && (
         <div className="notice" data-tone="danger">
           <strong>
-            {truncated.length} listing{truncated.length === 1 ? '' : 's'} hold fewer reviews than
-            the platform reports
+            {gaps.length} model{gaps.length === 1 ? '' : 's'} hold fewer reviews than their
+            storefront reports
           </strong>
-          , so the history below is incomplete for them. Judge.me&apos;s widget stops serving new
-          rows after 100 pages and then repeats the last one, which truncates a listing to its{' '}
-          <em>most recent</em> slice — the worst part to lose when reading a trend, because what
-          survives is the tail and what goes missing is the beginning.
+          , so the history below starts later than it should for them.
           <ul className="gap-list">
-            {truncated.slice(0, 6).map((c) => (
-              <li key={c.productId}>
-                {c.brand} — {c.productTitle}: <strong>{c.stored.toLocaleString()}</strong> held of{' '}
-                {c.reported?.toLocaleString()} reported
+            {gaps.slice(0, 8).map((c) => (
+              <li key={c.modelId}>
+                {c.brand} — {c.modelName}: <strong>{c.stored.toLocaleString()}</strong> held of{' '}
+                {c.reported.toLocaleString()} reported
+                {c.listings > 1 ? ` (across ${c.listings} listings)` : ''}
               </li>
             ))}
           </ul>
+          <p className="gap-why">
+            The large gaps are a hard limit at the source: Judge.me&apos;s widget stops serving
+            new rows after 100 pages and then repeats the last one, capping a listing at 1,000
+            reviews. What survives is the <em>most recent</em> slice, which is the worst part to
+            keep when reading a trend — the beginning is what goes missing. Smaller gaps may
+            instead be an accounting difference, because some platforms report a figure that rolls
+            a review up across every listing of a paddle while we store each review once.
+          </p>
         </div>
       )}
 
       <div className="section-head">
-        <h2>Momentum — reviews per month, and where the rating is heading</h2>
+        <h2>
+          Momentum — reviews per month, and where the rating is heading
+          <InfoTip label="Momentum">
+            How much people are still talking about each paddle, and whether they are getting
+            happier or less happy with it. Each row is one paddle model. The four number columns
+            cut the last year into four 90-day blocks, newest first, so you see the shape of a
+            rise or a fall rather than just its direction.
+            <Eg>
+              A row reading <strong>131 · 206 · 254 · 190</strong>, then <strong>−36%</strong> and{' '}
+              <strong>4.67 → 4.34</strong>, means 131 reviews arrived in the last 90 days, 206 in
+              the 90 days before that, 254 before that and 190 before that — interest peaked and
+              is now falling, down 36% against the previous block — while the average score
+              slipped from 4.67 to 4.34 out of 5.
+            </Eg>
+          </InfoTip>
+        </h2>
       </div>
       <p className="analysis-note">
         Review volume is a demand proxy <strong>within a brand over time</strong>, never across
@@ -171,8 +228,16 @@ export function MomentumPanel({
             <tr>
               <th scope="col">Model</th>
               <th scope="col">Monthly volume</th>
-              <th scope="col" className="num">Last {windowDays}d</th>
-              <th scope="col" className="num">Prior {windowDays}d</th>
+              <th scope="col" className="num">Last {windowDays} days</th>
+              <th scope="col" className="num">
+                {windowDays}–{windowDays * 2} days ago
+              </th>
+              <th scope="col" className="num">
+                {windowDays * 2}–{windowDays * 3} days ago
+              </th>
+              <th scope="col" className="num">
+                {windowDays * 3}–{windowDays * 4} days ago
+              </th>
               <th scope="col" className="num">Change</th>
               <th scope="col">Rating trend</th>
               <th scope="col" className="num">Then → now</th>
@@ -188,8 +253,11 @@ export function MomentumPanel({
                 <td>
                   <Spark values={r.months.map((m) => m.count)} title={`${r.name} monthly volume`} />
                 </td>
-                <td className="num">{r.recent.toLocaleString()}</td>
-                <td className="num">{r.prior.toLocaleString()}</td>
+                {r.windows.map((w) => (
+                  <td className="num" key={w.index}>
+                    {w.points.length.toLocaleString()}
+                  </td>
+                ))}
                 <td className="num" data-tone={toneOf(r.growth)}>
                   {r.growth === null ? 'new' : signed(r.growth)}
                 </td>
@@ -197,11 +265,11 @@ export function MomentumPanel({
                   <RatingLine points={r.traj.map((t) => t.trailing)} title={`${r.name} rating`} />
                 </td>
                 <td className="num">
-                  {r.priorAvg === null || r.recentAvg === null ? (
+                  {r.oldestAvg === null || r.newestAvg === null ? (
                     '—'
                   ) : (
-                    <span data-tone={toneOf(r.recentAvg - r.priorAvg, 0.15)}>
-                      {r.priorAvg.toFixed(2)} → {r.recentAvg.toFixed(2)}
+                    <span data-tone={toneOf(r.newestAvg - r.oldestAvg, 0.15)}>
+                      {r.oldestAvg.toFixed(2)} → {r.newestAvg.toFixed(2)}
                     </span>
                   )}
                 </td>
@@ -212,7 +280,10 @@ export function MomentumPanel({
       </div>
       <p className="analysis-note">
         Models with fewer than 20 reviews are left out — a 200% swing on three reviews is noise,
-        not momentum. &quot;new&quot; means the prior window held nothing to compare against.
+        not momentum. &quot;Change&quot; compares the last {windowDays} days against the{' '}
+        {windowDays} before it, and &quot;new&quot; means that earlier block held nothing to
+        compare against. &quot;Then → now&quot; spans the oldest and newest of the four blocks
+        that had any rated reviews.
       </p>
     </>
   )
@@ -309,7 +380,22 @@ export function PerceptionPanel({ facts }: { facts: EnrichedFact[] }) {
       {claimRows.length > 0 && (
         <section className="card">
           <div className="section-head">
-            <h2>Claimed play style vs what buyers call it</h2>
+            <h2>
+              Claimed play style vs what buyers call it
+              <InfoTip label="claimed play style">
+                Paddles are sold as &quot;power&quot;, &quot;control&quot; or a blend. When buyers
+                review one, some storefronts ask them to place it on that same scale. This table
+                puts the brand&apos;s label next to the buyers&apos; verdict, so you can see where
+                the marketing and the experience disagree. A ✕ marks a paddle most buyers put in a
+                different box than the brand does.
+                <Eg>
+                  <strong>SLK ERA Power · power · hybrid ✕ · 26% / 54% / 20% · 148</strong> means
+                  Selkirk sells it as a power paddle, but of 148 buyers asked, only 26% called it
+                  power, 54% called it a hybrid and 20% called it control — so the plurality
+                  disagrees with the label.
+                </Eg>
+              </InfoTip>
+            </h2>
           </div>
           <div className="table-wrap">
             <table>
@@ -356,7 +442,21 @@ export function PerceptionPanel({ facts }: { facts: EnrichedFact[] }) {
         {loyaltyRows.length > 0 && (
           <section className="card">
             <div className="section-head">
-              <h2>Loyalty vs conquest</h2>
+              <h2>
+                Loyalty vs conquest
+                <InfoTip label="loyalty vs conquest">
+                  Some storefronts ask a reviewer whether their previous paddle was the same brand.
+                  A high number means the paddle mostly sells to people who already owned the
+                  brand; a low number means it is winning customers away from rivals. Neither is
+                  automatically better, but a whole line-up scoring high is a brand selling only to
+                  itself.
+                  <Eg>
+                    <strong>OMNI · 62% · 210</strong> means 210 buyers answered the question, and
+                    62% of them were already brand customers — so roughly 4 in 10 were new to the
+                    brand.
+                  </Eg>
+                </InfoTip>
+              </h2>
             </div>
             <div className="table-wrap">
               <table>
@@ -391,7 +491,21 @@ export function PerceptionPanel({ facts }: { facts: EnrichedFact[] }) {
         {ownRows.length > 0 && (
           <section className="card">
             <div className="section-head">
-              <h2>Rating by how long they had owned it</h2>
+              <h2>
+                Rating by how long they had owned it
+                <InfoTip label="rating by ownership length">
+                  The nearest thing here to a durability test. Reviewers say how long they had the
+                  paddle before writing, so you can compare the score people give on arrival with
+                  the score they give after a season of play. A paddle that starts high and drops
+                  as ownership lengthens is wearing out.
+                  <Eg>
+                    <strong>Less than a month · 412 · 4.81</strong> next to{' '}
+                    <strong>More than a year · 96 · 4.42</strong> means new owners scored it 4.81
+                    out of 5 while long-term owners scored it 4.42 — a paddle people like less the
+                    longer they use it.
+                  </Eg>
+                </InfoTip>
+              </h2>
             </div>
             <div className="table-wrap">
               <table>
@@ -470,7 +584,22 @@ export function QualityPanel({ facts }: { facts: EnrichedFact[] }) {
   return (
     <>
       <div className="section-head">
-        <h2>Quality signals — failure language in the prose</h2>
+        <h2>
+          Quality signals — failure language in the prose
+          <InfoTip label="quality signals">
+            We read the written part of every review looking for words people use when a paddle
+            physically breaks — delaminated, dead spot, cracked, edge guard came off. This is a
+            word search, not a verified fault rate: it will catch a reviewer saying a paddle did
+            NOT delaminate, and it will miss a fault described in words we did not think of. Use
+            it to spot which problems are growing, not to quote a failure percentage.
+            <Eg>
+              <strong>Delamination · 83 · 3.94</strong> means 83 reviews in the current filter used
+              delamination wording, and those 83 reviews average 3.94 out of 5 — well below the
+              site-wide 4.76, which is what tells you they are genuine complaints rather than
+              someone saying it held up fine.
+            </Eg>
+          </InfoTip>
+        </h2>
       </div>
       <p className="analysis-note">
         {withDefect.length.toLocaleString()} of {facts.length.toLocaleString()} reviews in scope (
@@ -484,7 +613,20 @@ export function QualityPanel({ facts }: { facts: EnrichedFact[] }) {
       <div className="split-grid">
         <section className="card">
           <div className="section-head">
-            <h2>By failure mode</h2>
+            <h2>
+              By failure mode
+              <InfoTip label="failure modes">
+                The same flagged reviews grouped by the kind of problem described, most common
+                first, each with the average score those reviewers gave. A low average means real
+                complaints. An average close to the site-wide 4.76 means the wording is mostly
+                reassurance — people saying the thing did not happen.
+                <Eg>
+                  <strong>Grip / handle fault · 41 · 4.51</strong> is a row to treat with caution:
+                  41 mentions, but a 4.51 average suggests many of them are happy reviews that
+                  merely mention the grip.
+                </Eg>
+              </InfoTip>
+            </h2>
           </div>
           <div className="table-wrap">
             <table>
@@ -515,7 +657,20 @@ export function QualityPanel({ facts }: { facts: EnrichedFact[] }) {
 
         <section className="card">
           <div className="section-head">
-            <h2>Mention rate by month</h2>
+            <h2>
+              Mention rate by month
+              <InfoTip label="mention rate by month">
+                Flagged reviews as a share of all reviews that month, rather than a raw count. The
+                share is what matters: during a month when a brand collects twice as many reviews,
+                twice as many complaints is the same rate, not a new problem. A rising share is the
+                thing worth acting on.
+                <Eg>
+                  <strong>2026-07 · 14 · 980 · 1%</strong> means 14 of that month&apos;s 980
+                  reviews used failure wording — about 1 in 70. If the next month reads 3%, faults
+                  are growing faster than reviews.
+                </Eg>
+              </InfoTip>
+            </h2>
           </div>
           <Spark
             values={rateByMonth.map((m) => m.rate * 1000)}
@@ -553,7 +708,20 @@ export function QualityPanel({ facts }: { facts: EnrichedFact[] }) {
       {modelRows.length > 0 && (
         <section className="card">
           <div className="section-head">
-            <h2>Highest mention rate by model</h2>
+            <h2>
+              Highest mention rate by model
+              <InfoTip label="mention rate by model">
+                Which paddles attract the most failure talk, as a share of their own reviews so a
+                popular paddle is not penalised for being popular. Models with fewer than 50
+                reviews are excluded, because 1 flagged review out of 10 is a 10% rate that means
+                nothing.
+                <Eg>
+                  <strong>Perseus Pro IV · 12 · 347 · 3%</strong> means 12 of this model&apos;s 347
+                  reviews mention a physical failure — roughly 1 in 29. Compare it against the
+                  other rows rather than reading 3% as a true fault rate.
+                </Eg>
+              </InfoTip>
+            </h2>
           </div>
           <div className="table-wrap">
             <table>
@@ -629,7 +797,21 @@ export function CompetitivePanel({ facts }: { facts: EnrichedFact[] }) {
   return (
     <>
       <div className="section-head">
-        <h2>Competitive — who reviewers bring up</h2>
+        <h2>
+          Competitive — who reviewers bring up
+          <InfoTip label="competitive">
+            When someone reviews a paddle, they often name another brand they played before or
+            compared against. Each card takes one brand&apos;s reviewers and counts which rivals
+            they mention. A brand is never counted against itself, so &quot;my third Selkirk&quot;
+            is loyalty rather than a competitor mention.
+            <Eg>
+              On the CRBN card, <strong>JOOLA · 132 · 2% of this brand&apos;s reviews</strong>{' '}
+              means 132 CRBN reviewers brought up JOOLA — about 2 in every 100 CRBN reviews. The
+              line underneath says how many of those read as an actual switch (&quot;I moved from
+              my JOOLA&quot;) rather than a passing comparison (&quot;plays like a JOOLA&quot;).
+            </Eg>
+          </InfoTip>
+        </h2>
       </div>
       <p className="analysis-note">
         {withMention.length.toLocaleString()} reviews (

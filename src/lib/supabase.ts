@@ -41,17 +41,37 @@ type QueryBuilder = ReturnType<ReturnType<SupabaseClient['from']>['select']>
  * .limit(5000) returns exactly 1000 with no error and no warning. Any aggregate
  * built from a single request is wrong the moment a table passes 1000 rows.
  * Always page. This helper is the only sanctioned way to read a whole table.
+ *
+ * Every page is ordered, and that is not decoration.
+ *
+ * LIMIT/OFFSET without ORDER BY does not guarantee a stable row order between
+ * requests: Postgres is free to return the rows of page 3 in a different
+ * arrangement than it assumed when it served page 2, so paging a table this way
+ * both repeats rows and skips others. Measured on v_review_search before this
+ * was added: three separate reads each returned 20,771 rows of which only
+ * 20,352 were distinct — 419 reviews duplicated and 419 different ones missing,
+ * every single time. Every aggregate built on top was quietly wrong by that
+ * margin, which is why the reviews page and the analysis page disagreed about
+ * how many reviews each brand had.
+ *
+ * The order column must be UNIQUE for the guarantee to hold; a non-unique one
+ * leaves ties free to reshuffle across pages and reintroduces the same bug.
+ * Defaults to `id`, which every table here has. Views expose theirs under a
+ * different name, so they pass it explicitly.
  */
 export async function selectAll<T>(
   table: string,
   columns: string,
   apply: (q: QueryBuilder) => QueryBuilder = (q) => q,
-  pageSize = 1000,
+  options: { orderBy?: string; pageSize?: number } = {},
 ): Promise<T[]> {
+  const { orderBy = 'id', pageSize = 1000 } = options
   const out: T[] = []
   for (let from = 0; ; from += pageSize) {
     const rows = await withRetry(async () => {
-      const query = apply(db().from(table).select(columns)).range(from, from + pageSize - 1)
+      const query = apply(db().from(table).select(columns))
+        .order(orderBy, { ascending: true })
+        .range(from, from + pageSize - 1)
       const { data, error } = await query
       if (error) throw new Error(`select ${table}: ${error.message}`)
       return (data ?? []) as T[]

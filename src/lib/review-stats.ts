@@ -16,6 +16,8 @@ import type { Perception } from './review-context.js'
  * EnrichedFact and are fetched only when a panel that uses them is open.
  */
 export interface ReviewFact {
+  /** Unique per review; the key the prose tier joins on. */
+  reviewId: string
   productId: string
   productTitle: string
   modelId: string | null

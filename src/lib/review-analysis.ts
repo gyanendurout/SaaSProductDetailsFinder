@@ -10,9 +10,12 @@ import {
 } from './review-dimensions.js'
 import { brandsNamedIn, defectsIn, readsAsSwitch, reviewText } from './review-text.js'
 import { ownershipBucket, perceptionOf, wasReturningBuyer } from './review-context.js'
+import { materialGaps, type ModelCoverage } from './review-coverage.js'
 import type { EnrichedFact, ReviewFact } from './review-stats.js'
 
 const log = createLogger('review-analysis')
+
+export { materialGaps, type ModelCoverage } from './review-coverage.js'
 
 const PAGE = 1000
 /**
@@ -44,13 +47,14 @@ const CONCURRENCY = 8
  * prose panel rows that never had prose.
  */
 const REVIEW_COLUMNS =
-  'product_id,product_title,model_id,model_name,brand,brand_slug,rating,variant_label,' +
-  'submitted_at,play_style'
-const PROSE_COLUMNS = 'product_id,title,body,pros,cons,context_data,brand_slug,submitted_at'
+  'review_id,product_id,product_title,model_id,model_name,brand,brand_slug,rating,' +
+  'variant_label,submitted_at,play_style'
+const PROSE_COLUMNS = 'review_id,product_id,title,body,pros,cons,context_data,brand_slug'
 const VARIANT_COLUMNS = 'product_id,variant_shape,core_thickness_mm'
 const SNAPSHOT_COLUMNS = 'product_id,reported_total,observed_at'
 
 interface ReviewRow {
+  review_id: string
   product_id: string
   product_title: string | null
   model_id: string | null
@@ -64,9 +68,9 @@ interface ReviewRow {
 }
 
 interface ProseRow {
+  review_id: string
   product_id: string
   brand_slug: string
-  submitted_at: string | null
   title: string | null
   body: string | null
   pros: string | null
@@ -97,19 +101,9 @@ interface SnapshotRow {
  * and on demand. A short TTL keeps the page interactive without letting it
  * drift past the next crawl unnoticed.
  */
-export interface ProductCoverage {
-  productId: string
-  productTitle: string
-  brand: string
-  /** Reviews we actually hold. */
-  stored: number
-  /** What the review platform says the listing has. */
-  reported: number | null
-}
-
 interface CacheEntry {
   facts: ReviewFact[]
-  coverage: ProductCoverage[]
+  coverage: ModelCoverage[]
   loadedAt: number
 }
 /**
@@ -150,9 +144,9 @@ async function load(): Promise<CacheEntry> {
 async function readCorpus(): Promise<CacheEntry> {
   const started = Date.now()
   const [reviews, variants, snapshots] = await Promise.all([
-    fetchAllParallel<ReviewRow>('v_review_search', REVIEW_COLUMNS),
-    fetchAllParallel<VariantRow>('v_variant_current', VARIANT_COLUMNS),
-    fetchAllParallel<SnapshotRow>('product_review_snapshots', SNAPSHOT_COLUMNS),
+    fetchAllParallel<ReviewRow>('v_review_search', REVIEW_COLUMNS, 'review_id'),
+    fetchAllParallel<VariantRow>('v_variant_current', VARIANT_COLUMNS, 'variant_id'),
+    fetchAllParallel<SnapshotRow>('product_review_snapshots', SNAPSHOT_COLUMNS, 'id'),
   ])
 
   const listings = listingDimensions(variants)
@@ -164,7 +158,7 @@ async function readCorpus(): Promise<CacheEntry> {
   log.info('review facts loaded', {
     reviews: facts.length,
     variants: variants.length,
-    shortfalls: coverage.filter((c) => c.reported !== null && c.reported > c.stored).length,
+    shortfalls: materialGaps(coverage).length,
     ms: Date.now() - started,
   })
   return entry
@@ -184,31 +178,49 @@ export async function loadReviewFacts(): Promise<ReviewFact[]> {
  * wrong slice to lose when plotting a launch curve, because what survives is
  * the tail and what goes missing is the history.
  */
-export async function loadCoverage(): Promise<ProductCoverage[]> {
+export async function loadCoverage(): Promise<ModelCoverage[]> {
   return (await load()).coverage
 }
 
-function collectionCoverage(facts: ReviewFact[], snapshots: SnapshotRow[]): ProductCoverage[] {
+function collectionCoverage(facts: ReviewFact[], snapshots: SnapshotRow[]): ModelCoverage[] {
   const latest = new Map<string, SnapshotRow>()
   for (const s of snapshots) {
     const seen = latest.get(s.product_id)
     if (!seen || s.observed_at > seen.observed_at) latest.set(s.product_id, s)
   }
 
-  const stored = new Map<string, ProductCoverage>()
+  // Group by model, remembering which listings contributed, so `reported` can
+  // be a max over them rather than a sum that would count one review per
+  // listing it is displayed under.
+  const models = new Map<
+    string,
+    { modelName: string; brand: string; stored: number; listings: Set<string> }
+  >()
   for (const f of facts) {
-    const row = stored.get(f.productId) ?? {
-      productId: f.productId,
-      productTitle: f.productTitle,
-      brand: f.brand,
-      stored: 0,
-      reported: latest.get(f.productId)?.reported_total ?? null,
-    }
-    row.stored++
-    stored.set(f.productId, row)
+    // A listing that never resolved to a model is its own group; it still has a
+    // reported figure worth checking.
+    const key = f.modelId ?? `listing:${f.productId}`
+    const m =
+      models.get(key) ??
+      { modelName: f.modelName ?? f.productTitle, brand: f.brand, stored: 0, listings: new Set() }
+    m.stored++
+    m.listings.add(f.productId)
+    models.set(key, m)
   }
-  return [...stored.values()]
+
+  return [...models].map(([modelId, m]) => ({
+    modelId,
+    modelName: m.modelName,
+    brand: m.brand,
+    stored: m.stored,
+    reported: Math.max(
+      0,
+      ...[...m.listings].map((id) => latest.get(id)?.reported_total ?? 0),
+    ),
+    listings: m.listings.size,
+  }))
 }
+
 
 interface ListingDimensions {
   shape: Shape | null
@@ -236,6 +248,7 @@ function listingDimensions(variants: VariantRow[]): Map<string, ListingDimension
 
 function toFact(row: ReviewRow, listing: ListingDimensions | undefined): ReviewFact {
   return {
+    reviewId: row.review_id,
     productId: row.product_id,
     productTitle: row.product_title ?? 'Untitled listing',
     modelId: row.model_id,
@@ -259,7 +272,7 @@ function toFact(row: ReviewRow, listing: ListingDimensions | undefined): ReviewF
  * meaningful race, and costs a count that is one review stale rather than a
  * page that takes four times as long.
  */
-async function fetchAllParallel<T>(view: string, columns: string): Promise<T[]> {
+async function fetchAllParallel<T>(view: string, columns: string, orderBy: string): Promise<T[]> {
   const total = await withRetry(async () => {
     const { count, error } = await db().from(view).select('*', { count: 'exact', head: true })
     if (error) throw new Error(`count ${view}: ${error.message}`)
@@ -280,6 +293,9 @@ async function fetchAllParallel<T>(view: string, columns: string): Promise<T[]> 
           const { data, error } = await db()
             .from(view)
             .select(columns)
+            // Unique, ascending: without it the independent range requests
+            // below overlap and drop rows. See selectAll for the measurement.
+            .order(orderBy, { ascending: true })
             .range(index * PAGE, index * PAGE + PAGE - 1)
           if (error) throw new Error(`select ${view}: ${error.message}`)
           return (data ?? []) as T[]
@@ -325,25 +341,20 @@ async function readProse(): Promise<EnrichedFact[]> {
   const started = Date.now()
   const [base, prose] = await Promise.all([
     loadReviewFacts(),
-    fetchAllParallel<ProseRow>('v_review_search', PROSE_COLUMNS),
+    fetchAllParallel<ProseRow>('v_review_search', PROSE_COLUMNS, 'review_id'),
   ])
 
-  // A listing has many reviews, so the key must include the review's own
-  // timestamp and text to pair rows one-to-one. Grouping by listing and
-  // zipping in order is what the ordering caveat above rules out.
-  const queues = new Map<string, ProseRow[]>()
-  for (const row of prose) {
-    const list = queues.get(row.product_id) ?? []
-    list.push(row)
-    queues.set(row.product_id, list)
-  }
-  const cursors = new Map<string, number>()
+  // Paired on review_id, which both tiers now select.
+  //
+  // The first version grouped prose rows by listing and zipped them onto the
+  // facts in arrival order. That only worked while both reads happened to come
+  // back in the same order — an assumption that was already false, since neither
+  // read was ordered at all, and one that would have silently mismatched a
+  // review's text to another review's rating.
+  const proseById = new Map(prose.map((row) => [row.review_id, row]))
 
   const facts = base.map((fact) => {
-    const queue = queues.get(fact.productId) ?? []
-    const at = cursors.get(fact.productId) ?? 0
-    cursors.set(fact.productId, at + 1)
-    const row = queue[at]
+    const row = proseById.get(fact.reviewId)
     const text = row ? reviewText([row.title, row.body, row.pros, row.cons]) : ''
     const mentions = brandsNamedIn(text, fact.brandSlug)
     return {

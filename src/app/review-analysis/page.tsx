@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { resolveBrand } from '../../lib/queries.js'
 import { loadCoverage, loadEnrichedFacts, loadReviewFacts } from '../../lib/review-analysis.js'
-import { CompetitivePanel, MomentumPanel, PerceptionPanel, QualityPanel } from './panels'
+import { CompetitivePanel, Eg, InfoTip, MomentumPanel, PerceptionPanel, QualityPanel } from './panels'
 import { ProductFilter } from '../../components/ProductFilter'
 import { Stars } from '../../components/Stars'
 import { SHAPES, formatShape, formatThickness, type Shape } from '../../lib/review-dimensions.js'
@@ -215,7 +215,22 @@ export default async function ReviewAnalysisPage({
           ) : (
             <>
           <div className="section-head">
-            <h2>Most-reviewed paddle by brand</h2>
+            <h2>
+              Most-reviewed paddle by brand
+              <InfoTip label="most-reviewed paddle by brand">
+                One card per brand, listing its paddles from most-reviewed down. Review count is
+                the closest thing here to &quot;what people are buying and talking about&quot;. It
+                is a lifetime total, so a long-selling paddle can outrank a newer hit — the
+                Momentum tab is where you see who is winning <em>now</em>. Click any paddle to read
+                its actual reviews.
+                <Eg>
+                  <strong>X Series · 2,385 · 38% · 4.94★ · 2,267 five · 103 four</strong> means
+                  this paddle has 2,385 reviews, which is 38% of everything CRBN&apos;s buyers have
+                  written; they score it 4.94 out of 5 on average, with 2,267 of them giving five
+                  stars and 103 giving four.
+                </Eg>
+              </InfoTip>
+            </h2>
           </div>
           <div className="board-grid">
             {boards.map((board) => (
@@ -261,6 +276,21 @@ export default async function ReviewAnalysisPage({
               total={facts.length}
               hrefFor={(key) => href({ shape: key })}
               activeKey={params.shape}
+              tip={
+                <>
+                  Paddles come in different outlines — elongated ones reach further, wide-body ones
+                  are more forgiving, hybrids sit between. This splits the reviews by the shape the
+                  reviewer was holding, so you can see which shape people buy and how each one
+                  scores. Click a row to filter the whole page to it.
+                  <Eg>
+                    <strong>Elongated · 8,517 · 41% · 4.82 · 7,529 · 688</strong> means 8,517
+                    reviews are of elongated paddles — 41% of everything in view — averaging 4.82
+                    out of 5, with 7,529 five-star and 688 four-star reviews among them.
+                  </Eg>
+                  <strong>Not recorded</strong> is a real row, not a bug: for those reviews the
+                  shop never said which shape that buyer chose.
+                </>
+              }
               note={
                 <>
                   A review carries no shape of its own. It is taken from the reviewer&apos;s own
@@ -276,6 +306,20 @@ export default async function ReviewAnalysisPage({
               total={facts.length}
               hrefFor={(key) => href({ thickness: key })}
               activeKey={params.thickness}
+              tip={
+                <>
+                  How thick the paddle&apos;s core is, in millimetres. Thicker cores (16mm) are
+                  usually softer and more controlled, thinner ones (14mm) livelier. Same idea as
+                  the shape table, but read it carefully: three quarters of reviews sit in{' '}
+                  <strong>Not recorded</strong>, because 14mm and 16mm are normally two options on
+                  one product page and the shop does not record which one the reviewer bought.
+                  <Eg>
+                    <strong>16mm · 2,756 · 13% · 4.53 · 2,175 · 258</strong> means 2,756 reviews
+                    can be tied to a 16mm paddle — 13% of everything in view — averaging 4.53 out
+                    of 5. Treat the recorded rows as a sample, not as the whole market.
+                  </Eg>
+                </>
+              }
               note={
                 <>
                   Resolved the same way, and covering far less: 14mm and 16mm are usually two
@@ -360,6 +404,7 @@ function Breakdown({
   hrefFor,
   activeKey,
   note,
+  tip,
 }: {
   title: string
   rows: RankedEntry[]
@@ -367,11 +412,15 @@ function Breakdown({
   hrefFor: (key: string) => string
   activeKey?: string | undefined
   note: React.ReactNode
+  tip: React.ReactNode
 }) {
   return (
     <section className="card">
       <div className="section-head">
-        <h2>{title}</h2>
+        <h2>
+          {title}
+          <InfoTip label={title}>{tip}</InfoTip>
+        </h2>
       </div>
       <div className="table-wrap">
         <table>

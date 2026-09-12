@@ -763,3 +763,100 @@ td[data-tone='danger'],
   font-size: var(--text-xs);
   line-height: 1.6;
 }
+
+/* --- info tooltips ---------------------------------------------------------
+ *
+ * Opens on hover AND on keyboard focus, so the explanation is reachable by tab
+ * as well as by pointer. No JS: a focusable span plus :focus-within is enough,
+ * and it keeps these panels as pure server components.
+ * ------------------------------------------------------------------------- */
+.infotip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+  cursor: help;
+}
+.infotip-mark {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-muted);
+  font-family: var(--font-sans, inherit);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.infotip:hover .infotip-mark,
+.infotip:focus .infotip-mark,
+.infotip:focus-within .infotip-mark {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.infotip-body {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 40;
+  width: min(30rem, 78vw);
+  padding: var(--gap);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.13);
+  font-family: var(--font-sans, inherit);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink);
+  text-align: left;
+  letter-spacing: normal;
+  /* Hidden by clipping rather than display:none so the box is already laid out
+     when it appears and cannot reflow the row underneath it. */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+}
+.infotip:hover .infotip-body,
+.infotip:focus .infotip-body,
+.infotip:focus-within .infotip-body {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+/* Near the right edge the box would otherwise run off the page. */
+.split-grid > :last-child .infotip-body,
+.board-grid > :last-child .infotip-body {
+  left: auto;
+  right: 0;
+}
+.infotip-eg {
+  display: block;
+  margin-top: var(--gap-tight);
+  padding-top: var(--gap-tight);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-muted);
+}
+
+/* The heading is a flex container so the mark sits on the text baseline rather
+   than stretching the row. */
+.section-head h2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.gap-why {
+  margin: var(--gap-tight) 0 0;
+  padding-top: var(--gap-tight);
+  border-top: 1px solid currentColor;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  opacity: 0.92;
+}

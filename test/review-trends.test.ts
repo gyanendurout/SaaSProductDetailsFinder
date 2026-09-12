@@ -5,6 +5,7 @@ import {
   bucketize,
   growthRatio,
   recentSplit,
+  rollingWindows,
   trajectory,
   type DatedPoint,
 } from '../src/lib/review-trends.js'
@@ -116,4 +117,51 @@ test('growth: ordinary ratios', () => {
   assert.equal(growthRatio(15, 10), 0.5)
   assert.equal(growthRatio(5, 10), -0.5)
   assert.equal(growthRatio(0, 10), -1)
+})
+
+test('rolling windows: four blocks, newest first, none overlapping', () => {
+  const now = Date.parse('2026-09-12T00:00:00Z')
+  const w = rollingWindows(
+    // One per block: 2, 120, 204 and 285 days ago, plus one at 467 days that
+    // falls past the fourth block entirely.
+    [at('2026-09-10'), at('2026-05-15'), at('2026-02-20'), at('2025-12-01'), at('2025-06-01')],
+    90,
+    4,
+    now,
+  )
+  assert.equal(w.length, 4)
+  assert.deepEqual(w.map((x) => x.points.length), [1, 1, 1, 1])
+  // The 2025 review is older than 360 days and belongs to no window.
+  assert.equal(w.reduce((n, x) => n + x.points.length, 0), 4)
+})
+
+test('rolling windows: a review on a boundary lands in the newer block only', () => {
+  const now = Date.parse('2026-09-12T00:00:00Z')
+  // Exactly 90 days before now.
+  const boundary = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const w = rollingWindows([{ submittedAt: boundary, rating: 5 }], 90, 4, now)
+  assert.equal(w[0]?.points.length, 0)
+  assert.equal(w[1]?.points.length, 1)
+})
+
+test('rolling windows: each block carries its own mean, null when unrated', () => {
+  const now = Date.parse('2026-09-12T00:00:00Z')
+  const w = rollingWindows([at('2026-09-10', 4), at('2026-09-11', 2), at('2026-07-01', null)], 90, 2, now)
+  assert.equal(w[0]?.average, 3)
+  assert.equal(w[1]?.average, null)
+})
+
+test('rolling windows: a future-dated review is ignored, not counted as newest', () => {
+  const now = Date.parse('2026-09-12T00:00:00Z')
+  const w = rollingWindows([at('2027-01-01')], 90, 4, now)
+  assert.equal(w.reduce((n, x) => n + x.points.length, 0), 0)
+})
+
+test('rolling windows: recentSplit still agrees with the first two blocks', () => {
+  const now = Date.parse('2026-09-12T00:00:00Z')
+  const points = [at('2026-09-10'), at('2026-08-20'), at('2026-08-05'), at('2026-01-01')]
+  const split = recentSplit(points, 30, now)
+  const w = rollingWindows(points, 30, 2, now)
+  assert.equal(split.recent.length, w[0]?.points.length)
+  assert.equal(split.prior.length, w[1]?.points.length)
 })

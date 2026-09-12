@@ -1,6 +1,7 @@
 import 'server-only'
 import { db, selectAll } from './supabase.js'
 import { withRetry } from './retry.js'
+import { sanitiseTerm, toIlikeValue } from './review-search-term.js'
 
 /**
  * Read layer for reviews.
@@ -99,19 +100,26 @@ const MAX_PAGE_SIZE = 200
  * the page size and the exact count the pager depends on.
  */
 export async function searchReviews(query: ReviewQuery): Promise<ReviewPage> {
-  const page = Math.max(1, query.page ?? 1)
-  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, query.pageSize ?? REVIEW_PAGE_SIZE))
-  const offset = (page - 1) * pageSize
+  // Math.floor, not just Math.max. `?page=2.7` used to compute an offset of
+  // 85 and return rows 86-135 — a window straddling two pages, so rows showed
+  // up twice across the pager.
+  const requested = Math.max(1, Math.floor(query.page ?? 1) || 1)
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(query.pageSize ?? REVIEW_PAGE_SIZE)))
 
-  const result = await withRetry(async () => {
-    const base = db().from('v_review_search').select(REVIEW_COLUMNS, { count: 'exact' })
-    let q = applyReviewFilters(base, query)
-    q = applyReviewSort(q, query.sort ?? 'newest')
+  let result = await fetchPage(query, requested, pageSize)
+  let page = requested
 
-    const { data, error, count } = await q.range(offset, offset + pageSize - 1)
-    if (error) throw new Error(error.message)
-    return { rows: (data ?? []) as unknown as ReviewRow[], count: count ?? 0 }
-  }, 'searchReviews')
+  // PostgREST answers a range that starts past the end with 416, which used to
+  // surface as an unhandled throw and take the whole route to its error
+  // boundary — `?page=9999` returned "This page could not load" on an HTTP 200.
+  // The count comes back on that response, so the last real page is known and
+  // the honest thing is to serve it.
+  if (result === RANGE_PAST_END) {
+    const total = await countReviews(query)
+    page = Math.max(1, Math.ceil(total / pageSize))
+    const retry = await fetchPage(query, page, pageSize)
+    result = retry === RANGE_PAST_END ? { rows: [], count: total } : retry
+  }
 
   return {
     rows: result.rows,
@@ -120,6 +128,47 @@ export async function searchReviews(query: ReviewQuery): Promise<ReviewPage> {
     page,
     pageSize,
   }
+}
+
+interface PageResult {
+  rows: ReviewRow[]
+  count: number
+}
+
+/** Sentinel for "the requested range starts past the end of the result set". */
+const RANGE_PAST_END = Symbol('range past end')
+
+async function fetchPage(
+  query: ReviewQuery,
+  page: number,
+  pageSize: number,
+): Promise<PageResult | typeof RANGE_PAST_END> {
+  const offset = (page - 1) * pageSize
+  return withRetry(async () => {
+    const base = db().from('v_review_search').select(REVIEW_COLUMNS, { count: 'exact' })
+    let q = applyReviewFilters(base, query)
+    q = applyReviewSort(q, query.sort ?? 'newest')
+
+    const { data, error, count } = await q.range(offset, offset + pageSize - 1)
+    // Returned rather than thrown, so withRetry does not spend three attempts
+    // on a request that cannot succeed.
+    if (error && isRangeError(error)) return RANGE_PAST_END
+    if (error) throw new Error(error.message)
+    return { rows: (data ?? []) as unknown as ReviewRow[], count: count ?? 0 }
+  }, 'searchReviews')
+}
+
+async function countReviews(query: ReviewQuery): Promise<number> {
+  return withRetry(async () => {
+    const base = db().from('v_review_search').select('review_id', { count: 'exact', head: true })
+    const { count, error } = await applyReviewFilters(base, query)
+    if (error) throw new Error(error.message)
+    return count ?? 0
+  }, 'countReviews')
+}
+
+function isRangeError(error: { code?: string; message?: string }): boolean {
+  return error.code === 'PGRST103' || /range not satisfiable/i.test(error.message ?? '')
 }
 
 /**
@@ -151,7 +200,8 @@ function applyReviewFilters(builder: any, query: ReviewQuery): any {
     // substring match finds them. The trigram index on body serves it, and the
     // tsvector column stays in place for the ranked/phrase search that the
     // sentiment work will want.
-    q = q.or(`title.ilike.*${term}*,body.ilike.*${term}*,author_name.ilike.*${term}*`)
+    const value = toIlikeValue(term)
+    q = q.or(`title.ilike.${value},body.ilike.${value},author_name.ilike.${value}`)
   }
   return q
 }
@@ -179,17 +229,6 @@ function applyReviewSort(builder: any, sort: ReviewSort): any {
   return q.order('review_id', { ascending: false })
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
-
-/**
- * PostgREST `or=` is a comma-separated list wrapped in its own mini-grammar, so
- * a comma, parenthesis or wildcard inside the term would be read as syntax and
- * either error or silently change the filter. Stripped rather than escaped —
- * none of them are meaningful in a review search.
- */
-function sanitiseTerm(input: string | undefined): string | null {
-  const term = input?.replace(/[,()*\\%]/g, ' ').replace(/\s+/g, ' ').trim()
-  return term ? term : null
-}
 
 async function getReviewResponses(
   reviewIds: string[],
@@ -368,6 +407,7 @@ export async function getReviewedProducts(brand?: string): Promise<ReviewedProdu
       'v_review_product_counts',
       'product_id,product_title,brand,brand_slug,review_count,average_rating',
       (q) => (brand ? q.eq('brand_slug', brand) : q),
+      { orderBy: 'product_id' },
     )
     return sortProducts(rows)
   } catch (error) {
@@ -380,6 +420,7 @@ export async function getReviewedProducts(brand?: string): Promise<ReviewedProdu
         const filtered = q.gt('review_count', 0)
         return brand ? filtered.eq('brand_slug', brand) : filtered
       },
+      { orderBy: 'product_id' },
     )
     return sortProducts(rows)
   }

@@ -16,6 +16,7 @@ let seq = 0
 function fact(over: Partial<ReviewFact> = {}): ReviewFact {
   seq++
   return {
+    reviewId: `r${seq}`,
     productId: `p${seq}`,
     productTitle: `Listing ${seq}`,
     modelId: 'm1',

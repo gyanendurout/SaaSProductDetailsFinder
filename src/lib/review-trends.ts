@@ -139,17 +139,59 @@ export function recentSplit(
   days: number,
   now = Date.now(),
 ): { recent: DatedPoint[]; prior: DatedPoint[] } {
+  const [recent, prior] = rollingWindows(points, days, 2, now)
+  return { recent: recent?.points ?? [], prior: prior?.points ?? [] }
+}
+
+export interface Window {
+  /** 0 is the most recent window, 1 the one before it, and so on. */
+  index: number
+  /** Whole days ago the window starts and ends, e.g. 90 and 180. */
+  fromDaysAgo: number
+  toDaysAgo: number
+  points: DatedPoint[]
+  /** Mean rating inside the window, or null if nothing in it was rated. */
+  average: number | null
+}
+
+/**
+ * The last `count` windows of `days` each, newest first.
+ *
+ * Generalises recentSplit from two windows to any number, so a reader can see
+ * whether a drop is a blip or the fourth quarter of a slide. Each window is
+ * half-open — a review exactly on a boundary belongs to the newer window — so
+ * no review is counted twice and none falls between two windows.
+ */
+export function rollingWindows(
+  points: DatedPoint[],
+  days: number,
+  count: number,
+  now = Date.now(),
+): Window[] {
   const ms = days * 24 * 60 * 60 * 1000
-  const recent: DatedPoint[] = []
-  const prior: DatedPoint[] = []
+  const windows: Window[] = Array.from({ length: count }, (_, index) => ({
+    index,
+    fromDaysAgo: index * days,
+    toDaysAgo: (index + 1) * days,
+    points: [],
+    average: null,
+  }))
+
   for (const p of points) {
     const t = new Date(p.submittedAt).getTime()
     if (Number.isNaN(t)) continue
     const age = now - t
-    if (age <= ms) recent.push(p)
-    else if (age <= ms * 2) prior.push(p)
+    if (age < 0) continue
+    const index = Math.floor(age / ms)
+    if (index < count) windows[index]!.points.push(p)
   }
-  return { recent, prior }
+
+  for (const w of windows) {
+    const rated = w.points.filter((p) => p.rating !== null)
+    w.average =
+      rated.length === 0 ? null : rated.reduce((n, p) => n + (p.rating ?? 0), 0) / rated.length
+  }
+  return windows
 }
 
 /**
