@@ -22,10 +22,51 @@ const log = createLogger('reviews:judgeme')
 const PAGE_SIZE = 10
 const MAX_PAGES = 1000
 
+/**
+ * The endpoint answers in one of two shapes, decided per shop by which widget
+ * version the storefront runs. Both were observed on the same day:
+ *
+ *   legacy  {html, total_count, page}              crbnpickleball.com, paddletek.com
+ *   json    {reviews[], pagination, ...}           us.sixzeropickleball.com
+ *
+ * The JSON shape is strictly better — typed fields instead of scraped markup —
+ * so it is preferred where offered, and the HTML parser stays for the shops
+ * that still return it. Neither is a fallback for the other: a shop returns one
+ * or the other, and a response carrying neither is an error worth surfacing.
+ */
 interface JudgeMePage {
-  html: string
-  total_count: number
-  page: number
+  html?: string
+  total_count?: number
+  page?: number
+  reviews?: JudgeMeJsonReview[]
+  number_of_reviews?: number
+  pagination?: { total_pages?: number; current_page?: number; per_page?: number }
+}
+
+export interface JudgeMeJsonReview {
+  uuid?: string
+  title?: string | null
+  rating?: number | null
+  body_html?: string | null
+  verified_buyer?: boolean | null
+  created_at?: string | null
+  reviewer_name?: string | null
+  is_anonymous_reviewer?: boolean
+  location?: string | null
+  location_country?: string | null
+  thumb_up?: number
+  thumb_down?: number
+  pictures_urls?: unknown[]
+  video_external_ids?: unknown[]
+  media_platform_hosted_video_infos?: unknown[]
+  reply_content?: string | null
+  shop_reply_name?: string | null
+  product_variant_title?: string | null
+  transparency_badges?: unknown
+  language?: string | null
+  cf_answers?: unknown[]
+  is_for_product_from_group?: boolean
+  is_for_product_from_bundle?: boolean
 }
 
 /**
@@ -71,13 +112,37 @@ export class JudgeMeReviewAdapter implements ReviewSourceAdapter {
         per_page: String(PAGE_SIZE),
         product_id: sourceProductId,
       })
-      const body = await this.http.getJson<JudgeMePage>(
-        `https://judge.me/reviews/reviews_for_widget?${q.toString()}`,
-        { Referer: `${target.baseUrl}/` },
-      )
-      reportedTotal ??= body.total_count ?? null
+      let body: JudgeMePage
+      try {
+        body = await this.http.getJson<JudgeMePage>(
+          `https://judge.me/reviews/reviews_for_widget?${q.toString()}`,
+          { Referer: `${target.baseUrl}/` },
+        )
+      } catch (error) {
+        // A 404 means Judge.me holds no record of this product — it was never
+        // synced to the review app. That is a true statement about the product
+        // (it has no reviews), not a failure to collect them, and treating it
+        // as an error marks the whole site's run `partial` on every future
+        // crawl. paddletek.com/products/phoenix-genesis-carbon is one such.
+        //
+        // Only on the first page: a 404 partway through paging is the endpoint
+        // changing under us, which is worth surfacing.
+        if (isNotFound(error) && page === 1) {
+          log.info('no judge.me record for product; treating as zero reviews', {
+            sourceProductId,
+            shopDomain,
+          })
+          return { sourceProductId, reportedTotal: 0, reviews: [] }
+        }
+        throw error
+      }
+      reportedTotal ??= body.total_count ?? body.number_of_reviews ?? null
 
-      const batch = parseReviewBlocks(body.html ?? '', sourceProductId)
+      const batch = Array.isArray(body.reviews)
+        ? body.reviews.map((r) => parseJsonReview(r, sourceProductId)).filter(isReview)
+        : typeof body.html === 'string'
+          ? parseReviewBlocks(body.html, sourceProductId)
+          : missingShape(shopDomain, sourceProductId)
       if (batch.length === 0) break
 
       // Judge.me keeps serving the last page rather than 404ing past the end on
@@ -99,6 +164,125 @@ export class JudgeMeReviewAdapter implements ReviewSourceAdapter {
     }
 
     return { sourceProductId, reportedTotal, reviews }
+  }
+}
+
+function isReview(r: RawReview | null): r is RawReview {
+  return r !== null
+}
+
+/** Structural check — the http layer's HttpError carries a numeric `status`. */
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    (error as { status: unknown }).status === 404
+  )
+}
+
+/**
+ * A response carrying neither shape means the contract changed. Failing loudly
+ * beats returning zero reviews, which the pipeline would record as "this
+ * product has no reviews" and carry forward as fact.
+ */
+function missingShape(shopDomain: string, sourceProductId: string): never {
+  throw new Error(
+    `Judge.me returned neither \`html\` nor \`reviews\` for product ${sourceProductId} ` +
+      `on ${shopDomain}. The widget response shape has changed.`,
+  )
+}
+
+/** Strips tags from Judge.me's `body_html`, which is a <p>-wrapped paragraph. */
+function htmlToText(html: string | null | undefined): string {
+  if (!html) return ''
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&(?:rsquo|#8217);/g, '’')
+    .trim()
+}
+
+/** Judge.me's structured widget review. Exported for tests. */
+export function parseJsonReview(r: JudgeMeJsonReview, sourceProductId: string): RawReview | null {
+  if (!r.uuid) return null
+
+  const body = htmlToText(r.body_html)
+  const title = (r.title ?? '').trim()
+  const badges = Array.isArray(r.transparency_badges)
+    ? (r.transparency_badges as unknown[]).map((b) =>
+        typeof b === 'string' ? b : ((b as { badge_type?: string })?.badge_type ?? ''),
+      )
+    : []
+
+  const context: Record<string, unknown> = {}
+  if (badges.length > 0) context['_badges'] = badges
+  // Custom form answers — 'How long have you owned it', 'Skill level'. The same
+  // material Bazaarvoice carries as secondary ratings.
+  if (Array.isArray(r.cf_answers) && r.cf_answers.length > 0) context['cf_answers'] = r.cf_answers
+
+  const responses: RawReviewResponse[] =
+    r.reply_content && r.reply_content.trim()
+      ? [
+          {
+            sourceResponseId: null,
+            department: null,
+            authorName: r.shop_reply_name ?? null,
+            responseSource: 'judgeme',
+            body: htmlToText(r.reply_content),
+            respondedAt: null,
+          },
+        ]
+      : []
+
+  return {
+    sourceReviewId: r.uuid,
+    sourceProductId,
+    rating: typeof r.rating === 'number' && Number.isFinite(r.rating) ? r.rating : null,
+    ratingRange: 5,
+    title: title || null,
+    body: body || null,
+    pros: null,
+    cons: null,
+    // An anonymous reviewer is rendered as the literal 'Anonymous'; keeping it
+    // is honest, and the UI already falls back to the same word for a null.
+    authorName: r.reviewer_name ?? null,
+    authorId: null,
+    // Rendered as '(United States)'; the parentheses are presentation.
+    authorLocation: (r.location ?? r.location_country ?? '').replace(/^\(|\)$/g, '').trim() || null,
+    isVerifiedBuyer: r.verified_buyer ?? null,
+    isRecommended: null,
+    isIncentivized: badges.length > 0
+      ? badges.some((b) => /earned_for_future_purchase|incentiv/i.test(b))
+      : null,
+    // Judge.me's product groups are its syndication: one review shown across
+    // every product in the group.
+    isSyndicated: r.is_for_product_from_group ?? r.is_for_product_from_bundle ?? null,
+    isRatingsOnly: body === '' && title === '',
+    helpfulCount: r.thumb_up ?? 0,
+    unhelpfulCount: r.thumb_down ?? 0,
+    photoCount: Array.isArray(r.pictures_urls) ? r.pictures_urls.length : 0,
+    videoCount:
+      (Array.isArray(r.video_external_ids) ? r.video_external_ids.length : 0) +
+      (Array.isArray(r.media_platform_hosted_video_infos)
+        ? r.media_platform_hosted_video_infos.length
+        : 0),
+    variantLabel: r.product_variant_title ?? null,
+    sourceVariantId: null,
+    contextData: context,
+    media: [],
+    submittedAt: r.created_at ?? null,
+    sourceUpdatedAt: null,
+    languageCode: r.language ?? null,
+    responses,
   }
 }
 

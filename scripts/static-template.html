@@ -1,0 +1,1356 @@
+<title>Paddle Market Snapshot</title>
+<style>
+/* =============================================================================
+   Static snapshot of the Product Finder dashboard.
+
+   Tokens are lifted from src/app/globals.css so the offline file and the live
+   app are the same object seen twice: warm paper ground, rust accent, serif
+   display against a tabular data face, colour used semantically only.
+   ========================================================================== */
+:root {
+  --rail-w: 210px;
+  color-scheme: light dark;
+
+  --paper: oklch(97.5% 0.006 85);
+  --surface: oklch(99.5% 0.003 85);
+  --surface-sunken: oklch(95% 0.007 85);
+  --rule: oklch(87% 0.008 85);
+  --rule-strong: oklch(76% 0.01 85);
+
+  --ink: oklch(22% 0.012 60);
+  --ink-muted: oklch(48% 0.012 60);
+  --ink-faint: oklch(62% 0.01 60);
+
+  --accent: oklch(48% 0.13 35);
+  --accent-soft: oklch(93% 0.035 40);
+  --on-accent: oklch(99% 0.004 85);
+  --positive: oklch(50% 0.1 165);
+  --positive-soft: oklch(94% 0.03 165);
+  --warning: oklch(60% 0.13 75);
+  --warning-soft: oklch(94% 0.05 80);
+  --danger: oklch(52% 0.16 25);
+  --danger-soft: oklch(94% 0.04 25);
+
+  --brand-joola: oklch(55% 0.13 250);
+  --brand-selkirk: oklch(52% 0.12 160);
+  --brand-crbn: oklch(56% 0.14 30);
+  --brand-sixzero: oklch(54% 0.13 300);
+  --brand-paddletek: oklch(53% 0.12 195);
+  --brand-gamma: oklch(58% 0.13 95);
+
+  --font-display: ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-display: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem);
+
+  --gap-hair: 0.25rem;
+  --gap-tight: 0.5rem;
+  --gap: 1rem;
+  --gap-loose: 1.75rem;
+  --gap-section: clamp(1.75rem, 1.5rem + 1.6vw, 3rem);
+
+  --radius: 3px;
+  --radius-lg: 6px;
+}
+
+/* Dark tokens are declared twice on purpose: once for the viewer whose OS is
+   dark and who never touched a toggle (nothing stamped on :root), once for an
+   explicit dark choice. Components only ever read the tokens. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: oklch(17% 0.008 60);
+    --surface: oklch(21% 0.009 60);
+    --surface-sunken: oklch(14% 0.008 60);
+    --rule: oklch(30% 0.01 60);
+    --rule-strong: oklch(40% 0.012 60);
+    --ink: oklch(93% 0.006 85);
+    --ink-muted: oklch(70% 0.01 85);
+    --ink-faint: oklch(55% 0.01 85);
+    --accent: oklch(72% 0.13 40);
+    --accent-soft: oklch(30% 0.05 35);
+    --on-accent: oklch(16% 0.01 60);
+    --positive: oklch(72% 0.11 165);
+    --positive-soft: oklch(27% 0.04 165);
+    --warning: oklch(78% 0.12 80);
+    --warning-soft: oklch(29% 0.05 80);
+    --danger: oklch(70% 0.15 25);
+    --danger-soft: oklch(29% 0.06 25);
+    --brand-joola: oklch(70% 0.12 250);
+    --brand-selkirk: oklch(68% 0.11 160);
+    --brand-crbn: oklch(72% 0.13 30);
+    --brand-sixzero: oklch(70% 0.12 300);
+    --brand-paddletek: oklch(69% 0.11 195);
+    --brand-gamma: oklch(74% 0.12 95);
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: oklch(17% 0.008 60);
+  --surface: oklch(21% 0.009 60);
+  --surface-sunken: oklch(14% 0.008 60);
+  --rule: oklch(30% 0.01 60);
+  --rule-strong: oklch(40% 0.012 60);
+  --ink: oklch(93% 0.006 85);
+  --ink-muted: oklch(70% 0.01 85);
+  --ink-faint: oklch(55% 0.01 85);
+  --accent: oklch(72% 0.13 40);
+  --accent-soft: oklch(30% 0.05 35);
+  --on-accent: oklch(16% 0.01 60);
+  --positive: oklch(72% 0.11 165);
+  --positive-soft: oklch(27% 0.04 165);
+  --warning: oklch(78% 0.12 80);
+  --warning-soft: oklch(29% 0.05 80);
+  --danger: oklch(70% 0.15 25);
+  --danger-soft: oklch(29% 0.06 25);
+  --brand-joola: oklch(70% 0.12 250);
+  --brand-selkirk: oklch(68% 0.11 160);
+  --brand-crbn: oklch(72% 0.13 30);
+  --brand-sixzero: oklch(70% 0.12 300);
+  --brand-paddletek: oklch(69% 0.11 195);
+  --brand-gamma: oklch(74% 0.12 95);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* --- shell ---------------------------------------------------------------- */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  padding: 0.85rem clamp(1rem, 3vw, 2rem);
+  border-bottom: 1px solid var(--rule-strong);
+  background: var(--surface);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.masthead .stamp {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.shell-body {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  align-items: start;
+}
+
+.rail {
+  border-right: 1px solid var(--rule);
+  padding: var(--gap-loose) var(--gap) var(--gap-loose) clamp(1rem, 3vw, 2rem);
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+.rail-label {
+  margin: 0 0 var(--gap-tight);
+  font-size: var(--text-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 620;
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--gap-loose);
+}
+
+.rail-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-tight);
+  padding: 0.34rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.rail-item:hover { background: var(--surface-sunken); color: var(--ink); }
+
+.rail-item[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.rail-item .count {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.rail-note {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  line-height: 1.5;
+  border-top: 1px solid var(--rule);
+  padding-top: var(--gap-tight);
+  margin: 0;
+}
+
+main { padding: var(--gap-section) clamp(1rem, 3vw, 2rem) 4rem; min-width: 0; }
+
+/* --- headings ------------------------------------------------------------- */
+.eyebrow {
+  margin: 0;
+  font-size: var(--text-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 640;
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0.2rem 0 0.35rem;
+  text-wrap: balance;
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: var(--gap-section) 0 var(--gap-tight);
+}
+
+.lede { margin: 0 0 var(--gap-loose); color: var(--ink-muted); max-width: 68ch; }
+.muted { color: var(--ink-muted); }
+.faint { color: var(--ink-faint); }
+
+/* --- figures -------------------------------------------------------------- */
+/* Only Overview and Reviews lead with big numbers, because there the figures
+   are the point. Everywhere else the table is the point. */
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0;
+}
+
+.figure { background: var(--surface); padding: 0.9rem 1rem; }
+
+.figure dt {
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 620;
+}
+
+.figure dd {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.figure .sub { font-size: var(--text-xs); color: var(--ink-faint); }
+
+/* --- controls ------------------------------------------------------------- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap-tight) 0 var(--gap);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--gap);
+}
+
+.filter-group { display: flex; align-items: center; gap: var(--gap-hair); flex-wrap: wrap; }
+
+/* 100 product chips is a wall that pushes the reviews themselves off the
+   screen. Every product stays reachable; the list just scrolls in place. */
+.filter-group.scrolling {
+  align-items: flex-start;
+  max-height: 7.4rem;
+  overflow-y: auto;
+  width: 100%;
+  padding-right: var(--gap-tight);
+}
+
+.filter-label {
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 620;
+  margin-right: var(--gap-hair);
+}
+
+.pill {
+  padding: 0.22rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 100px;
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.pill:hover:not([disabled]) { border-color: var(--rule-strong); color: var(--ink); }
+.pill[disabled] { opacity: 0.45; cursor: default; }
+
+.pill[data-active='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 560;
+}
+
+.pill[data-active='true'] .faint { color: var(--on-accent); opacity: 0.75; }
+
+.search {
+  flex: 1 1 240px;
+  min-width: 180px;
+  padding: 0.36rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.search::placeholder { color: var(--ink-faint); }
+
+/* --- tables --------------------------------------------------------------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+
+th, td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: middle;
+}
+
+thead th {
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: var(--text-xs);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 620;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 1;
+}
+
+td.num, th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+td.strong { font-weight: 620; }
+tbody tr:hover { background: var(--surface-sunken); }
+
+tbody tr[data-scoped='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.wide { min-width: 780px; }
+.title-cell { min-width: 240px; }
+
+/* --- badges --------------------------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: 0.08rem 0.42rem;
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  font-weight: 560;
+}
+
+.badge b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.b-positive { background: var(--positive-soft); color: var(--positive); }
+.b-warning { background: var(--warning-soft); color: var(--warning); }
+.b-danger { background: var(--danger-soft); color: var(--danger); }
+.b-accent { background: var(--accent-soft); color: var(--accent); }
+.b-quiet { background: var(--surface-sunken); color: var(--ink-muted); }
+
+/* The scoped row is tinted with the accent, which is also the accent chip's
+   background — the chip would vanish into the row. */
+tbody tr[data-scoped='true'] .b-accent {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* --- range bar (prices) --------------------------------------------------- */
+.range-col { width: 32%; min-width: 200px; }
+.range-bar { position: relative; height: 18px; }
+
+.range-track {
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--rule);
+  border-radius: 2px;
+}
+
+.range-fill {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: var(--ink-muted);
+}
+
+.range-median {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 15px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--ink);
+}
+
+/* One hue per brand, assigned by slug rather than row index: sorting must not
+   reshuffle the palette. */
+.fill-joola { background: var(--brand-joola); }
+.fill-selkirk { background: var(--brand-selkirk); }
+.fill-crbn { background: var(--brand-crbn); }
+.fill-sixzero { background: var(--brand-sixzero); }
+.fill-paddletek { background: var(--brand-paddletek); }
+.fill-gamma { background: var(--brand-gamma); }
+
+/* --- star distribution ---------------------------------------------------- */
+.dist { display: grid; gap: 3px; max-width: 400px; margin-bottom: var(--gap-loose); }
+
+.dist-row {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr 4.5rem;
+  align-items: center;
+  gap: var(--gap-tight);
+  font-size: var(--text-sm);
+}
+
+.dist-track { height: 9px; background: var(--surface-sunken); border-radius: 2px; overflow: hidden; }
+.dist-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+
+.dist-row .n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+}
+
+/* --- review cards --------------------------------------------------------- */
+.reviews { display: grid; gap: var(--gap-tight); }
+
+.review {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.7rem 0.9rem;
+}
+
+.review-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-tight);
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+
+.stars { color: var(--accent); font-size: var(--text-sm); letter-spacing: 0.05em; white-space: nowrap; }
+.review-title { font-weight: 620; }
+
+.review-meta {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+.review-body {
+  margin: 0.25rem 0 0;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.review-prod { font-size: var(--text-xs); color: var(--ink-faint); margin-top: 0.35rem; }
+.review-tags { display: flex; gap: var(--gap-hair); flex-wrap: wrap; margin-top: 0.35rem; }
+
+.pager { display: flex; align-items: center; gap: var(--gap-tight); margin-top: var(--gap); flex-wrap: wrap; }
+.pager .status { font-size: var(--text-sm); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+.empty {
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--radius);
+  padding: var(--gap-loose);
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.note {
+  border-left: 2px solid var(--accent);
+  padding: 0.4rem 0 0.4rem 0.85rem;
+  margin: var(--gap-loose) 0 0;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  max-width: 76ch;
+}
+
+.axis-note {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  margin-top: var(--gap);
+  max-width: 86ch;
+  line-height: 1.7;
+}
+
+.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+@media (max-width: 820px) {
+  .shell-body { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    position: static;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: var(--gap);
+  }
+  .rail-group { flex-direction: row; flex-wrap: wrap; }
+  .rail-item { width: auto; }
+  .review-meta { margin-left: 0; }
+}
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <span class="wordmark">Product Finder</span>
+    <span class="muted" style="font-size: var(--text-sm)">Paddle market snapshot</span>
+    <span class="stamp" id="stamp"></span>
+  </header>
+
+  <div class="shell-body">
+    <aside class="rail">
+      <p class="rail-label">Brand</p>
+      <div class="rail-group" id="brand-rail"></div>
+      <p class="rail-label">View</p>
+      <div class="rail-group" id="view-rail"></div>
+      <p class="rail-note">Static snapshot — every figure is frozen at the timestamp above. Nothing on this page queries a database.</p>
+    </aside>
+
+    <main id="main"></main>
+  </div>
+</div>
+
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+'use strict'
+
+const D = JSON.parse(document.getElementById('payload').textContent)
+
+/* Reviews arrive as arrays of values against D.reviewFields — at 14k rows the
+   repeated key names would have cost more than the data itself. Index once,
+   then read by name. */
+const F = {}
+D.reviewFields.forEach(function (name, i) { F[name] = i })
+
+const VIEWS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'catalogue', label: 'Catalogue' },
+  { key: 'reviews', label: 'Reviews' },
+  { key: 'prices', label: 'Prices' },
+  { key: 'discounts', label: 'Discounts' },
+  { key: 'changes', label: 'Changes' },
+  { key: 'pipeline', label: 'Pipeline' }
+]
+
+const PAGE = 40
+
+const state = {
+  view: 'overview',
+  brand: null,
+  basis: 'product',
+  catalogueQuery: '',
+  catTier: null,
+  catStyle: null,
+  catGeneration: null,
+  catLine: null,
+  reviewQuery: '',
+  reviewRating: null,
+  reviewSentiment: null,
+  reviewOnly: null,
+  reviewProduct: null,
+  reviewSort: 'newest',
+  reviewPage: 0
+}
+
+/* --- formatting ----------------------------------------------------------- */
+function money(n, c) {
+  if (n === null || n === undefined || !isFinite(n)) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: c || 'USD' }).format(n)
+}
+
+function num(n) { return n === null || n === undefined ? '—' : Number(n).toLocaleString() }
+function pct(n) { return n === null || n === undefined ? '—' : Math.round(Number(n)) + '%' }
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  })
+}
+
+function when(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function slugOfBrand(name) {
+  const b = D.brands.find(function (x) { return x.name === name })
+  return b ? b.slug : String(name || '').toLowerCase()
+}
+
+function brandName(slug) {
+  const b = D.brands.find(function (x) { return x.slug === slug })
+  return b ? b.name : slug
+}
+
+function reviewBrandSlug(row) { return slugOfBrand(D.productBrand[row[F.product_id]]) }
+
+/* --- scoping -------------------------------------------------------------- */
+function variantsInScope() {
+  return state.brand
+    ? D.variants.filter(function (v) { return slugOfBrand(v.brand) === state.brand })
+    : D.variants
+}
+
+function modelsInScope() {
+  return state.brand
+    ? D.models.filter(function (m) { return slugOfBrand(m.brand) === state.brand })
+    : D.models
+}
+
+function reviewsScopedToBrand() {
+  return state.brand
+    ? D.reviews.filter(function (r) { return reviewBrandSlug(r) === state.brand })
+    : D.reviews
+}
+
+/* `ignoreStars` exists for the distribution: the star counts must ignore an
+   active star filter, or picking "3" would zero out every other bar. */
+function reviewsInScope(ignoreStars) {
+  let rows = reviewsScopedToBrand()
+  if (state.reviewProduct) {
+    rows = rows.filter(function (r) { return r[F.product_id] === state.reviewProduct })
+  }
+  if (state.reviewRating && !ignoreStars) {
+    rows = rows.filter(function (r) { return Math.round(r[F.rating]) === state.reviewRating })
+  }
+  if (state.reviewSentiment === 'positive') {
+    rows = rows.filter(function (r) { return r[F.rating] !== null && r[F.rating] >= 4 })
+  }
+  if (state.reviewSentiment === 'critical') {
+    rows = rows.filter(function (r) { return r[F.rating] !== null && r[F.rating] <= 2 })
+  }
+  if (state.reviewOnly === 'text') {
+    rows = rows.filter(function (r) { return r[F.body] && r[F.body].trim() })
+  }
+  if (state.reviewOnly === 'verified') {
+    rows = rows.filter(function (r) { return r[F.verified] })
+  }
+  if (state.reviewOnly === 'response') {
+    rows = rows.filter(function (r) { return r[F.responses] > 0 })
+  }
+
+  const q = state.reviewQuery.trim().toLowerCase()
+  if (q) {
+    rows = rows.filter(function (r) {
+      const hay = (r[F.title] || '') + ' ' + (r[F.body] || '') + ' ' + (r[F.pros] || '') + ' ' +
+        (r[F.cons] || '') + ' ' + (r[F.author_name] || '') + ' ' +
+        (D.productTitle[r[F.product_id]] || '')
+      return hay.toLowerCase().indexOf(q) !== -1
+    })
+  }
+  return rows
+}
+
+/* --- rails ---------------------------------------------------------------- */
+function renderRails() {
+  const onReviews = state.view === 'reviews'
+
+  const rows = [{ slug: null, name: 'All brands', skus: D.variants.length, reviews: D.reviews.length }]
+    .concat(D.brands.map(function (b) {
+      const rc = D.reviewCounts.find(function (c) { return c.brand_slug === b.slug })
+      return { slug: b.slug, name: b.name, skus: b.skus, reviews: rc ? rc.count : 0 }
+    }))
+
+  document.getElementById('brand-rail').innerHTML = rows.map(function (b) {
+    return '<button class="rail-item" data-brand="' + (b.slug === null ? '' : esc(b.slug)) + '"' +
+      ' data-active="' + (state.brand === b.slug) + '">' +
+      '<span>' + esc(b.name) + '</span>' +
+      '<span class="count">' + num(onReviews ? b.reviews : b.skus) + '</span></button>'
+  }).join('')
+
+  document.getElementById('view-rail').innerHTML = VIEWS.map(function (v) {
+    return '<button class="rail-item" data-view="' + v.key + '" data-active="' +
+      (state.view === v.key) + '"><span>' + v.label + '</span></button>'
+  }).join('')
+}
+
+/* --- views ---------------------------------------------------------------- */
+function viewOverview() {
+  const vs = variantsInScope()
+  const ms = modelsInScope()
+  const prices = vs.map(function (v) { return Number(v.price) }).filter(function (n) { return isFinite(n) && n > 0 })
+  const inStock = vs.filter(function (v) { return v.is_available })
+  const outOfStock = vs.filter(function (v) { return v.is_available === false })
+  const onSale = vs.filter(function (v) { return v.is_on_sale })
+  const best = vs.reduce(function (m, v) { return Math.max(m, Number(v.discount_pct || 0)) }, 0)
+
+  const scoped = reviewsScopedToBrand()
+  const rated = scoped.filter(function (r) { return r[F.rating] !== null })
+  const avg = rated.length
+    ? rated.reduce(function (n, r) { return n + r[F.rating] }, 0) / rated.length
+    : null
+
+  const figures = [
+    ['Models', num(ms.length), state.brand ? esc(brandName(state.brand)) : 'across all brands'],
+    ['SKUs', num(vs.length), num(inStock.length) + ' in stock · ' + num(outOfStock.length) + ' out'],
+    ['Reviews', num(scoped.length), avg ? avg.toFixed(2) + ' average rating' : 'none rated'],
+    ['On sale', num(onSale.length), best ? 'deepest cut ' + pct(best) : 'nothing discounted'],
+    ['Floor', money(prices.length ? Math.min.apply(null, prices) : null), 'lowest live price'],
+    ['Ceiling', money(prices.length ? Math.max.apply(null, prices) : null), 'highest live price']
+  ]
+
+  const brandRows = D.brands.map(function (b) {
+    const rc = D.reviewCounts.find(function (c) { return c.brand_slug === b.slug })
+    const band = D.prices.product.bands.find(function (x) { return x.brandSlug === b.slug })
+    return '<tr data-scoped="' + (state.brand === b.slug) + '">' +
+      '<td class="strong">' + esc(b.name) + '</td>' +
+      '<td class="num">' + num(b.models) + '</td>' +
+      '<td class="num">' + num(b.skus) + '</td>' +
+      '<td class="num">' + num(rc ? rc.count : 0) + '</td>' +
+      '<td class="num strong">' + (band ? money(band.median) : '—') + '</td>' +
+      '<td class="num">' + money(b.priceMin) + ' – ' + money(b.priceMax) + '</td>' +
+      '<td class="num">' + num(b.onSale) + '</td>' +
+      '<td class="num">' + num(b.outOfStock) + '</td></tr>'
+  }).join('')
+
+  return '<p class="eyebrow">Overview</p>' +
+    '<h1>' + (state.brand ? esc(brandName(state.brand)) : 'Three brands, one shelf') + '</h1>' +
+    '<p class="lede">Everything the crawler has observed: what each brand sells, what it charges, and what ' +
+    'buyers said about it afterwards.' +
+    (state.brand ? ' Figures are scoped to ' + esc(brandName(state.brand)) +
+      '; the brand table stays whole, because a comparison with one row in it is not a comparison.' : '') +
+    '</p>' +
+    '<dl class="figures">' + figures.map(function (f) {
+      return '<div class="figure"><dt>' + f[0] + '</dt><dd>' + f[1] + '</dd><div class="sub">' + f[2] + '</div></div>'
+    }).join('') + '</dl>' +
+    '<h2>By brand</h2>' +
+    '<div class="table-wrap"><table class="wide"><thead><tr>' +
+    '<th>Brand</th><th class="num">Models</th><th class="num">SKUs</th><th class="num">Reviews</th>' +
+    '<th class="num">Median price</th><th class="num">Range</th><th class="num">On sale</th><th class="num">Out of stock</th>' +
+    '</tr></thead><tbody>' + brandRows + '</tbody></table></div>' +
+    '<p class="note">Counts describe the current assortment, not everything ever seen. A SKU the brand ' +
+    'withdraws stops counting the day it leaves the site, so these totals fall as well as rise.</p>'
+}
+
+function viewPrices() {
+  const cmp = D.prices[state.basis]
+  const span = Math.max(1, cmp.ceiling - cmp.floor)
+  const at = function (v) { return ((v - cmp.floor) / span) * 100 }
+
+  const rows = cmp.bands.map(function (b) {
+    const left = at(b.low)
+    // A single-priced brand would otherwise render as an invisible zero-width bar.
+    const width = Math.max(at(b.high) - left, 0.8)
+
+    const tiers = ['value', 'mid', 'premium'].map(function (t) {
+      const n = b.tiers[t]
+      if (!n) return ''
+      const tone = t === 'value' ? 'b-positive' : t === 'mid' ? 'b-warning' : 'b-accent'
+      return '<span class="badge ' + tone + '">' + t + ' <b>' + n + '</b></span>'
+    }).join('')
+
+    return '<tr data-scoped="' + (state.brand === b.brandSlug) + '">' +
+      '<td class="strong">' + esc(b.brand) + '</td>' +
+      '<td class="num">' + num(b.priced) +
+      (b.unpriced ? ' <span class="faint">(+' + b.unpriced + ' n/a)</span>' : '') + '</td>' +
+      '<td class="num">' + money(b.low) + '</td>' +
+      '<td class="num strong">' + money(b.median) + '</td>' +
+      '<td class="num">' + money(b.high) + '</td>' +
+      '<td class="range-col"><div class="range-bar" role="img" aria-label="' + esc(b.brand) + ': ' +
+      money(b.low) + ' to ' + money(b.high) + ', median ' + money(b.median) + '">' +
+      '<div class="range-track"></div>' +
+      '<div class="range-fill fill-' + esc(b.brandSlug) + '" style="left:' + left + '%;width:' + width + '%"></div>' +
+      '<div class="range-median" style="left:' + at(b.median) + '%"></div></div></td>' +
+      '<td><div class="review-tags">' + tiers + '</div></td></tr>'
+  }).join('')
+
+  const basisNote = state.basis === 'product'
+    ? 'Counting <strong>products</strong>: every colourway and thickness of one paddle is a single row, ' +
+      'priced at the median of its SKUs. This is how a buyer meets the range.'
+    : 'Counting <strong>SKUs</strong>: every purchasable variant counts separately, so a brand that ships ' +
+      'many colourways of one paddle weighs more heavily. Useful for shelf space, misleading for range.'
+
+  return '<p class="eyebrow">Price comparison</p>' +
+    '<h1>Where each brand plays</h1>' +
+    '<p class="lede">The band each brand occupies — its floor, its midpoint, its ceiling — and how that ' +
+    'range divides across price tiers. Sorted by median, so the brand at the top of the market is at the ' +
+    'top of the table.</p>' +
+    '<div class="filters"><div class="filter-group">' +
+    '<span class="filter-label">Count by</span>' +
+    '<button class="pill" data-basis="product" data-active="' + (state.basis === 'product') + '">Product</button>' +
+    '<button class="pill" data-basis="sku" data-active="' + (state.basis === 'sku') + '">SKU</button>' +
+    '</div></div>' +
+    '<p class="muted" style="font-size: var(--text-sm); max-width: 72ch; margin: 0 0 var(--gap-loose)">' +
+    basisNote + '</p>' +
+    '<div class="table-wrap"><table class="wide"><thead><tr>' +
+    '<th>Brand</th><th class="num">Priced</th><th class="num">Low</th><th class="num">Median</th>' +
+    '<th class="num">High</th><th class="range-col">Range</th><th>Tier mix</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="axis-note">Bars share one axis from ' + money(cmp.floor) + ' to ' + money(cmp.ceiling) +
+    ', so their widths are comparable; the notch is the median. Tiers are fixed — ' +
+    '<span class="badge b-positive">value</span> under $100, <span class="badge b-warning">mid</span> under ' +
+    '$200, <span class="badge b-accent">premium</span> $200 and up — rather than quantiles of this data, so ' +
+    'a tier means the same thing next quarter. A brand never drops out of this table when a brand scope is ' +
+    'active: reducing a comparison to one row defeats it, so the scoped row is highlighted instead.</p>'
+}
+
+/** Distinct values in first-seen order, matching the live page's `unique`. */
+function uniqueValues(list) {
+  const seen = []
+  list.forEach(function (v) { if (v && seen.indexOf(v) === -1) seen.push(v) })
+  return seen
+}
+
+function listOrDash(values, max) {
+  if (!values || values.length === 0) return '<span class="faint">—</span>'
+  const shown = values.slice(0, max).join(', ')
+  return esc(values.length > max ? shown + ' +' + (values.length - max) : shown)
+}
+
+function tierTone(tier) {
+  return tier === 'pro' ? 'b-accent' : tier === 'performance' ? 'b-warning' : 'b-quiet'
+}
+
+function filterRow(label, param, values, active) {
+  return '<div class="filter-group"><span class="filter-label">' + label + '</span>' +
+    '<button class="pill" data-cat="' + param + '" data-val="" data-active="' + (!active) + '">All</button>' +
+    values.map(function (v) {
+      return '<button class="pill" data-cat="' + param + '" data-val="' + esc(v) + '" data-active="' +
+        (active === v) + '">' + esc(v) + '</button>'
+    }).join('') + '</div>'
+}
+
+function viewCatalogue() {
+  const all = modelsInScope()
+
+  // Filter options come from the brand-scoped set, before the other filters
+  // narrow it — otherwise picking a tier would erase the generations you could
+  // switch to next.
+  const tiers = uniqueValues(all.map(function (m) { return m.skill_tier }))
+  const generations = uniqueValues(all.map(function (m) { return m.generation }))
+  const lines = uniqueValues(all.map(function (m) { return m.product_line })).sort()
+  // 'unknown' is not a play style anybody browses by.
+  const styles = uniqueValues(all.map(function (m) { return m.play_style }))
+    .filter(function (s) { return s !== 'unknown' })
+
+  let rows = all.filter(function (m) {
+    return (!state.catTier || m.skill_tier === state.catTier) &&
+      (!state.catStyle || m.play_style === state.catStyle) &&
+      (!state.catGeneration || m.generation === state.catGeneration) &&
+      (!state.catLine || m.product_line === state.catLine)
+  })
+
+  const q = state.catalogueQuery.trim().toLowerCase()
+  if (q) {
+    rows = rows.filter(function (m) {
+      const hay = (m.model_name || '') + ' ' + (m.brand || '') + ' ' + (m.product_line || '') + ' ' +
+        (m.generation || '') + ' ' + (m.skill_tier || '') + ' ' + ((m.shapes || []).join(' ')) + ' ' +
+        ((m.colorways || []).join(' ')) + ' ' + ((m.endorsed_players || []).join(' '))
+      return hay.toLowerCase().indexOf(q) !== -1
+    })
+  }
+
+  const withShapes = all.filter(function (m) { return m.shapes && m.shapes.length }).length
+  const skus = rows.reduce(function (n, m) { return n + m.sku_count }, 0)
+  const multiBrand = !state.brand
+  const showStyle = styles.length > 0
+  const showGeneration = generations.length > 0
+
+  const body = rows.map(function (m) {
+    const price = m.price_min === m.price_max
+      ? money(m.price_min, m.currency)
+      : money(m.price_min, m.currency) + '–' + money(m.price_max, m.currency)
+
+    let cells = ''
+    if (multiBrand) cells += '<td>' + esc(m.brand) + '</td>'
+    cells += '<td class="title-cell strong">' + esc(m.model_name) + '</td>'
+    cells += '<td><span class="badge ' + tierTone(m.skill_tier) + '">' + esc(m.skill_tier || 'unknown') + '</span></td>'
+    if (showStyle) {
+      cells += '<td>' + (m.play_style && m.play_style !== 'unknown'
+        ? '<span class="badge b-quiet">' + esc(m.play_style) + '</span>'
+        : '<span class="faint">—</span>') + '</td>'
+    }
+    if (showGeneration) {
+      cells += '<td>' + (m.generation
+        ? '<span class="badge b-quiet">' + esc(m.generation) + '</span>'
+        : '<span class="faint" title="This line carries no generation designation">—</span>') + '</td>'
+    }
+    cells += '<td class="num">' + m.sku_count + '</td>'
+    cells += '<td class="mono">' + (m.thicknesses_mm && m.thicknesses_mm.length
+      ? esc(m.thicknesses_mm.map(function (t) { return t + 'mm' }).join(' · '))
+      : '<span class="faint" title="Not published in the catalogue feed">—</span>') + '</td>'
+    cells += '<td class="muted">' + listOrDash(m.shapes, 2) + '</td>'
+    cells += '<td class="muted">' + listOrDash(m.colorways, 3) + '</td>'
+    cells += '<td class="num">' + price +
+      (m.skus_on_sale > 0 ? ' <span class="badge b-danger">' + pct(m.best_discount_pct) + ' off</span>' : '') + '</td>'
+    cells += '<td class="num"><span' + (m.skus_in_stock === 0 ? ' class="faint"' : '') + '>' +
+      m.skus_in_stock + '/' + m.sku_count + '</span></td>'
+    return '<tr>' + cells + '</tr>'
+  }).join('')
+
+  let head = ''
+  if (multiBrand) head += '<th>Brand</th>'
+  head += '<th>Model</th><th>Tier</th>'
+  if (showStyle) head += '<th>Style</th>'
+  if (showGeneration) head += '<th>Generation</th>'
+  head += '<th class="num">SKUs</th><th>Thickness</th><th>Shape</th><th>Colourways</th>' +
+    '<th class="num">Price</th><th class="num">Stock</th>'
+
+  return '<p class="eyebrow">Catalogue' + (state.brand ? ' · ' + esc(brandName(state.brand)) : '') + '</p>' +
+    '<h1>Every model, resolved</h1>' +
+    '<p class="lede">Storefronts model the same hierarchy differently — one lists a paddle as a single ' +
+    'product with size and colour options, another ships a separate product per thickness and colourway. ' +
+    'These are reconciled here so a model can be compared with a model.</p>' +
+
+    '<div class="filters">' +
+    filterRow('Tier', 'catTier', tiers, state.catTier) +
+    (showStyle ? filterRow('Play style', 'catStyle', styles, state.catStyle) : '') +
+    (showGeneration ? filterRow('Generation', 'catGeneration', generations, state.catGeneration) : '') +
+    filterRow('Line', 'catLine', lines, state.catLine) +
+    '</div>' +
+
+    '<div class="filters"><input class="search" id="cat-search" type="search" ' +
+    'placeholder="Search models, lines, shapes, colourways, players…" value="' + esc(state.catalogueQuery) +
+    '" aria-label="Search catalogue"></div>' +
+
+    '<p class="muted" style="margin-top: 0">' + num(rows.length) + ' model' +
+    (rows.length === 1 ? '' : 's') + ' · ' + num(skus) + ' SKUs</p>' +
+
+    (rows.length === 0
+      ? '<div class="empty">No models match those filters.</div>'
+      : '<div class="table-wrap"><table class="wide"><thead><tr>' + head +
+        '</tr></thead><tbody>' + body + '</tbody></table></div>') +
+
+    '<p class="note">Shape and colourway are read off the variants rather than off the model. The ' +
+    'model-level shape column is <span class="mono">unknown</span> for every one of the ' +
+    num(D.models.length) + ' models — nothing rolls the variant shapes up into it — so this column would ' +
+    'say nothing at all if it used that field. ' + num(all.length - withShapes) + ' of ' + num(all.length) +
+    ' still show a dash, for the same reason a thickness can be missing: the storefront never published one.</p>'
+}
+
+function viewReviews() {
+  const rows = reviewsInScope(false)
+  const base = reviewsInScope(true)
+
+  const dist = [1, 2, 3, 4, 5].map(function (s) {
+    return base.filter(function (r) { return Math.round(r[F.rating]) === s }).length
+  })
+  const distMax = Math.max.apply(null, dist.concat([1]))
+  const ratedCount = dist.reduce(function (a, b) { return a + b }, 0)
+  const avg = ratedCount
+    ? dist.reduce(function (n, c, i) { return n + c * (i + 1) }, 0) / ratedCount
+    : null
+
+  const sorted = rows.slice().sort(function (a, b) {
+    if (state.reviewSort === 'helpful') return b[F.helpful] - a[F.helpful]
+    if (state.reviewSort === 'rating_desc') return (b[F.rating] || 0) - (a[F.rating] || 0)
+    if (state.reviewSort === 'rating_asc') return (a[F.rating] || 0) - (b[F.rating] || 0)
+    const ta = a[F.submitted_at] || ''
+    const tb = b[F.submitted_at] || ''
+    return state.reviewSort === 'oldest' ? ta.localeCompare(tb) : tb.localeCompare(ta)
+  })
+
+  const pages = Math.max(1, Math.ceil(sorted.length / PAGE))
+  const page = Math.min(state.reviewPage, pages - 1)
+  const slice = sorted.slice(page * PAGE, page * PAGE + PAGE)
+
+  const cards = slice.map(function (r) {
+    const rating = r[F.rating]
+    const whole = rating === null ? 0 : Math.round(rating)
+    const stars = rating === null
+      ? ''
+      : '<span class="stars" aria-label="' + rating + ' out of ' + r[F.rating_range] + '">' +
+        '★'.repeat(whole) + '<span class="faint">' +
+        '☆'.repeat(Math.max(0, r[F.rating_range] - whole)) + '</span></span>'
+
+    const tags = []
+    if (r[F.verified]) tags.push('<span class="badge b-positive">verified buyer</span>')
+    if (r[F.incentivized]) tags.push('<span class="badge b-warning">incentivised</span>')
+    if (r[F.recommended]) tags.push('<span class="badge b-quiet">recommends</span>')
+    if (r[F.responses] > 0) tags.push('<span class="badge b-accent">brand replied</span>')
+    if (r[F.photos] > 0) tags.push('<span class="badge b-quiet">' + r[F.photos] + ' photo' + (r[F.photos] > 1 ? 's' : '') + '</span>')
+    if (r[F.ratings_only]) tags.push('<span class="badge b-quiet">rating only</span>')
+    if (r[F.helpful] > 0) tags.push('<span class="badge b-quiet">' + r[F.helpful] + ' found helpful</span>')
+
+    let extra = ''
+    if (r[F.pros]) extra += '<p class="review-body"><strong>Pros:</strong> ' + esc(r[F.pros]) + '</p>'
+    if (r[F.cons]) extra += '<p class="review-body"><strong>Cons:</strong> ' + esc(r[F.cons]) + '</p>'
+
+    return '<article class="review"><div class="review-head">' + stars +
+      (r[F.title] ? '<span class="review-title">' + esc(r[F.title]) + '</span>' : '') +
+      '<span class="review-meta">' + esc(r[F.author_name] || 'Anonymous') +
+      (r[F.author_location] ? ' · ' + esc(r[F.author_location]) : '') + ' · ' + when(r[F.submitted_at]) +
+      '</span></div>' +
+      (r[F.body] ? '<p class="review-body">' + esc(r[F.body]) + '</p>' : '') + extra +
+      '<div class="review-prod">' + esc(D.productTitle[r[F.product_id]] || 'Unknown product') +
+      (r[F.variant_label] ? ' · ' + esc(r[F.variant_label]) : '') +
+      ' · <span class="mono">' + esc(r[F.platform]) + '</span></div>' +
+      (tags.length ? '<div class="review-tags">' + tags.join('') + '</div>' : '') +
+      '</article>'
+  }).join('')
+
+  const products = state.brand
+    ? D.reviewProducts.filter(function (p) { return p.brand_slug === state.brand || slugOfBrand(p.brand) === state.brand })
+    : D.reviewProducts
+
+  const withText = rows.filter(function (r) { return r[F.body] && r[F.body].trim() }).length
+  const verified = rows.filter(function (r) { return r[F.verified] }).length
+  const replied = rows.filter(function (r) { return r[F.responses] > 0 }).length
+
+  const sortPills = [['newest', 'Newest'], ['oldest', 'Oldest'], ['rating_desc', 'Highest'],
+    ['rating_asc', 'Lowest'], ['helpful', 'Most helpful']]
+
+  return '<p class="eyebrow">Reviews</p>' +
+    '<h1>' + num(rows.length) + ' review' + (rows.length === 1 ? '' : 's') +
+    (state.brand ? ' · ' + esc(brandName(state.brand)) : '') + '</h1>' +
+    '<p class="lede">Every review the crawler has collected across three platforms — Bazaarvoice, Okendo ' +
+    'and Judge.me — normalised into one shape. Search runs over title, body, pros, cons, author and ' +
+    'product name.</p>' +
+
+    '<dl class="figures" style="margin-bottom: var(--gap-loose)">' +
+    '<div class="figure"><dt>Showing</dt><dd>' + num(rows.length) + '</dd><div class="sub">of ' +
+    num(D.reviews.length) + ' collected</div></div>' +
+    '<div class="figure"><dt>Average</dt><dd>' + (avg ? avg.toFixed(2) : '—') + '</dd><div class="sub">' +
+    num(ratedCount) + ' carry a rating</div></div>' +
+    '<div class="figure"><dt>With text</dt><dd>' + num(withText) + '</dd><div class="sub">rest are stars only</div></div>' +
+    '<div class="figure"><dt>Verified</dt><dd>' + num(verified) + '</dd><div class="sub">confirmed buyers</div></div>' +
+    '<div class="figure"><dt>Brand replied</dt><dd>' + num(replied) + '</dd><div class="sub">carry a response</div></div>' +
+    '</dl>' +
+
+    '<div class="dist">' + [5, 4, 3, 2, 1].map(function (s) {
+      return '<div class="dist-row"><span>' + s + ' star</span>' +
+        '<div class="dist-track"><div class="dist-fill" style="width:' +
+        ((dist[s - 1] / distMax) * 100) + '%"></div></div>' +
+        '<span class="n">' + num(dist[s - 1]) + '</span></div>'
+    }).join('') + '</div>' +
+
+    '<div class="filters"><input class="search" id="rev-search" type="search" ' +
+    'placeholder="Search ' + num(D.reviews.length) + ' reviews…" value="' + esc(state.reviewQuery) +
+    '" aria-label="Search reviews"></div>' +
+
+    '<div class="filters">' +
+    '<div class="filter-group"><span class="filter-label">Sentiment</span>' +
+    '<button class="pill" data-sent="" data-active="' + (!state.reviewSentiment) + '">Any</button>' +
+    '<button class="pill" data-sent="positive" data-active="' + (state.reviewSentiment === 'positive') + '">Positive 4–5</button>' +
+    '<button class="pill" data-sent="critical" data-active="' + (state.reviewSentiment === 'critical') + '">Critical 1–2</button>' +
+    '</div>' +
+    '<div class="filter-group"><span class="filter-label">Stars</span>' +
+    '<button class="pill" data-star="" data-active="' + (!state.reviewRating) + '">Any</button>' +
+    [5, 4, 3, 2, 1].map(function (s) {
+      return '<button class="pill" data-star="' + s + '" data-active="' + (state.reviewRating === s) + '">' + s + '</button>'
+    }).join('') + '</div>' +
+    '<div class="filter-group"><span class="filter-label">Only</span>' +
+    '<button class="pill" data-only="" data-active="' + (!state.reviewOnly) + '">All</button>' +
+    '<button class="pill" data-only="text" data-active="' + (state.reviewOnly === 'text') + '">With text</button>' +
+    '<button class="pill" data-only="verified" data-active="' + (state.reviewOnly === 'verified') + '">Verified</button>' +
+    '<button class="pill" data-only="response" data-active="' + (state.reviewOnly === 'response') + '">Brand replied</button>' +
+    '</div>' +
+    '<div class="filter-group"><span class="filter-label">Sort</span>' +
+    sortPills.map(function (p) {
+      return '<button class="pill" data-sort="' + p[0] + '" data-active="' + (state.reviewSort === p[0]) + '">' + p[1] + '</button>'
+    }).join('') + '</div></div>' +
+
+    '<div class="filters"><div class="filter-group scrolling">' +
+    '<span class="filter-label">Product (' + products.length + ')</span>' +
+    '<button class="pill" data-prod="" data-active="' + (!state.reviewProduct) + '">Any</button>' +
+    products.map(function (p) {
+      return '<button class="pill" data-prod="' + esc(p.product_id) + '" data-active="' +
+        (state.reviewProduct === p.product_id) + '">' + esc(p.product_title) +
+        ' <span class="faint">' + num(p.review_count) + '</span></button>'
+    }).join('') + '</div></div>' +
+
+    (rows.length === 0
+      ? '<div class="empty">No review matches those filters.</div>'
+      : '<div class="reviews">' + cards + '</div>' +
+        '<div class="pager">' +
+        '<button class="pill" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>' +
+        '<span class="status">' + num(page * PAGE + 1) + '–' + num(Math.min((page + 1) * PAGE, sorted.length)) +
+        ' of ' + num(sorted.length) + '</span>' +
+        '<button class="pill" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>' +
+        '</div>') +
+
+    '<p class="note">A syndicated review attaches to exactly one listing, even where the same paddle sells ' +
+    'under several. That is why this product list (' + products.length + ') is shorter than the catalogue: ' +
+    'a listing holding none of its own reviews is not offered as a filter that would return nothing.</p>'
+}
+
+function viewDiscounts() {
+  const rows = variantsInScope()
+    .filter(function (v) { return v.is_on_sale })
+    .sort(function (a, b) { return Number(b.discount_pct || 0) - Number(a.discount_pct || 0) })
+
+  const body = rows.map(function (v) {
+    return '<tr>' +
+      '<td class="title-cell strong">' + esc(v.product_title) + '</td>' +
+      '<td>' + esc(v.brand) + '</td>' +
+      '<td class="faint">' + esc(v.variant_title || v.colorway || '—') + '</td>' +
+      '<td class="num faint" style="text-decoration: line-through">' + money(v.compare_at_price, v.currency) + '</td>' +
+      '<td class="num strong">' + money(v.price, v.currency) + '</td>' +
+      '<td class="num"><span class="badge b-danger">' + pct(v.discount_pct) + '</span></td>' +
+      '<td>' + (v.is_available
+        ? '<span class="badge b-positive">in stock</span>'
+        : '<span class="badge b-quiet">out</span>') + '</td></tr>'
+  }).join('')
+
+  return '<p class="eyebrow">Discounts</p>' +
+    '<h1>' + num(rows.length) + ' SKU' + (rows.length === 1 ? '' : 's') + ' on sale' +
+    (state.brand ? ' · ' + esc(brandName(state.brand)) : '') + '</h1>' +
+    '<p class="lede">Everything currently marked down, deepest cut first. The discount is the retailer\'s ' +
+    'own compare-at price against what it charges today — not a comparison with what it charged last month.</p>' +
+    (rows.length === 0
+      ? '<div class="empty">Nothing is discounted in this scope right now.</div>'
+      : '<div class="table-wrap"><table class="wide"><thead><tr>' +
+        '<th>Product</th><th>Brand</th><th>Variant</th><th class="num">Was</th><th class="num">Now</th>' +
+        '<th class="num">Off</th><th>Stock</th></tr></thead><tbody>' + body + '</tbody></table></div>')
+}
+
+function viewChanges() {
+  const rows = state.brand
+    ? D.changes.filter(function (c) { return slugOfBrand(c.brand) === state.brand })
+    : D.changes
+
+  const body = rows.map(function (c) {
+    return '<tr>' +
+      '<td class="faint">' + when(c.occurred_at) + '</td>' +
+      '<td><span class="badge b-quiet">' + esc(String(c.event_type).replace(/_/g, ' ')) + '</span></td>' +
+      '<td class="title-cell">' + esc(c.product_title) +
+      (c.variant_title ? ' <span class="faint">· ' + esc(c.variant_title) + '</span>' : '') + '</td>' +
+      '<td>' + esc(c.brand) + '</td>' +
+      '<td class="num faint">' + esc(c.old_value) + '</td>' +
+      '<td class="num">' + esc(c.new_value) + '</td>' +
+      '<td class="num">' + (c.delta_pct === null || c.delta_pct === undefined ? '—' : pct(c.delta_pct)) + '</td>' +
+      '</tr>'
+  }).join('')
+
+  return '<p class="eyebrow">Changes</p>' +
+    '<h1>' + num(rows.length) + ' recorded change' + (rows.length === 1 ? '' : 's') + '</h1>' +
+    '<p class="lede">Price moves, stock flips and assortment edits, written once per observed transition ' +
+    'rather than once per crawl.</p>' +
+    (rows.length === 0
+      ? '<div class="empty">No change events in this scope.</div>'
+      : '<div class="table-wrap"><table class="wide"><thead><tr>' +
+        '<th>When</th><th>Event</th><th>Product</th><th>Brand</th><th class="num">From</th>' +
+        '<th class="num">To</th><th class="num">Delta</th></tr></thead><tbody>' + body + '</tbody></table></div>') +
+    '<p class="note">The history is this short because a change needs two observations to sit between. It ' +
+    'begins at the first crawl, not at the first day a brand ever moved a price — which is the argument for ' +
+    'running the crawl on a schedule rather than on demand.</p>'
+}
+
+function viewPipeline() {
+  const body = D.runs.map(function (r) {
+    const tone = (r.status === 'ok' || r.status === 'success') ? 'b-positive'
+      : r.status === 'partial' ? 'b-warning'
+      : r.status === 'running' ? 'b-quiet' : 'b-danger'
+    return '<tr>' +
+      '<td class="faint">' + when(r.started_at) + '</td>' +
+      '<td><span class="badge ' + tone + '">' + esc(r.status) + '</span></td>' +
+      '<td class="faint">' + esc(r.run_type) + '</td>' +
+      '<td class="faint mono">' + esc((r.stages_done || []).join(' · ') || '—') + '</td>' +
+      '<td class="num">' + num(r.products_found) + '</td>' +
+      '<td class="num">' + num(r.variants_found) + '</td>' +
+      '<td class="num">' + num(r.snapshots_written) + '</td>' +
+      '<td class="num">' + num(r.events_written) + '</td></tr>'
+  }).join('')
+
+  return '<p class="eyebrow">Pipeline</p>' +
+    '<h1>' + num(D.runs.length) + ' crawl run' + (D.runs.length === 1 ? '' : 's') + '</h1>' +
+    '<p class="lede">Every run the system recorded, newest first. Runs are infrastructure rather than ' +
+    'catalogue, so a brand scope does not apply here.</p>' +
+    '<div class="table-wrap"><table class="wide"><thead><tr>' +
+    '<th>Started</th><th>Status</th><th>Type</th><th>Stages</th><th class="num">Products</th>' +
+    '<th class="num">Variants</th><th class="num">Snapshots</th><th class="num">Events</th>' +
+    '</tr></thead><tbody>' + body + '</tbody></table></div>'
+}
+
+const RENDERERS = {
+  overview: viewOverview,
+  catalogue: viewCatalogue,
+  reviews: viewReviews,
+  prices: viewPrices,
+  discounts: viewDiscounts,
+  changes: viewChanges,
+  pipeline: viewPipeline
+}
+
+function render() {
+  renderRails()
+  document.getElementById('main').innerHTML = RENDERERS[state.view]()
+}
+
+/* --- events --------------------------------------------------------------- */
+document.addEventListener('click', function (e) {
+  const el = e.target.closest('button')
+  if (!el || el.disabled) return
+
+  if (el.dataset.view) {
+    state.view = el.dataset.view
+    render()
+    window.scrollTo(0, 0)
+    return
+  }
+  if (el.dataset.brand !== undefined) {
+    state.brand = el.dataset.brand || null
+    // A filter naming one brand's line, generation or product cannot outlive
+    // the brand it belonged to — it would just render an empty table.
+    state.reviewProduct = null
+    state.reviewPage = 0
+    state.catTier = null
+    state.catStyle = null
+    state.catGeneration = null
+    state.catLine = null
+    render()
+    return
+  }
+  if (el.dataset.cat) {
+    state[el.dataset.cat] = el.dataset.val || null
+    render()
+    return
+  }
+  if (el.dataset.basis) { state.basis = el.dataset.basis; render(); return }
+  if (el.dataset.sent !== undefined) {
+    state.reviewSentiment = el.dataset.sent || null
+    state.reviewPage = 0
+    render()
+    return
+  }
+  if (el.dataset.star !== undefined) {
+    state.reviewRating = el.dataset.star ? Number(el.dataset.star) : null
+    state.reviewPage = 0
+    render()
+    return
+  }
+  if (el.dataset.only !== undefined) {
+    state.reviewOnly = el.dataset.only || null
+    state.reviewPage = 0
+    render()
+    return
+  }
+  if (el.dataset.sort) { state.reviewSort = el.dataset.sort; state.reviewPage = 0; render(); return }
+  if (el.dataset.prod !== undefined) {
+    state.reviewProduct = el.dataset.prod || null
+    state.reviewPage = 0
+    render()
+    return
+  }
+  if (el.dataset.page !== undefined) {
+    state.reviewPage = Number(el.dataset.page)
+    render()
+    window.scrollTo(0, 0)
+  }
+})
+
+/* Re-rendering the pane on every keystroke would drop focus, so the search
+   inputs re-render and then put the caret back. */
+document.addEventListener('input', function (e) {
+  const el = e.target
+
+  if (el.id === 'cat-search') {
+    state.catalogueQuery = el.value
+    render()
+    const next = document.getElementById('cat-search')
+    if (next) { next.focus(); next.setSelectionRange(next.value.length, next.value.length) }
+  }
+
+  if (el.id === 'rev-search') {
+    state.reviewQuery = el.value
+    state.reviewPage = 0
+    render()
+    const next = document.getElementById('rev-search')
+    if (next) { next.focus(); next.setSelectionRange(next.value.length, next.value.length) }
+  }
+})
+
+document.getElementById('stamp').textContent = 'Snapshot ' +
+  new Date(D.generatedAt).toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  })
+
+render()
+</script>

@@ -19,6 +19,7 @@ export class HttpError extends Error {
 
 interface RobotsRules {
   disallows: string[]
+  allows: string[]
   crawlDelayMs?: number
 }
 
@@ -148,7 +149,7 @@ export class PoliteClient {
         })
       }
     }
-    if (rules.disallows.some((p) => pathname.startsWith(p))) {
+    if (!isAllowedByRobots(pathname, rules)) {
       throw new HttpError(`Blocked by robots.txt: ${url}`, 0, url, true)
     }
   }
@@ -159,19 +160,33 @@ export class PoliteClient {
         headers: { 'User-Agent': this.userAgent },
         signal: AbortSignal.timeout(15_000),
       })
-      if (!res.ok) return { disallows: [] }
+      if (!res.ok) return { disallows: [], allows: [] }
       return parseRobots(await res.text())
     } catch {
       // A missing or unreachable robots.txt is not permission to hammer; the
       // per-host delay still applies.
-      return { disallows: [] }
+      return { disallows: [], allows: [] }
     }
   }
 }
 
-/** Minimal robots parser: the wildcard group only, which is the group binding us. */
+/**
+ * Robots parser: the wildcard group only, which is the group binding us.
+ *
+ * `Allow` is parsed as well as `Disallow`, because ignoring it is not the safe
+ * simplification it looks like. Yotpo publishes:
+ *
+ *     Disallow: /
+ *     Allow: /v1/widget/*
+ *
+ * — a deny-by-default policy that then names the public widget endpoints as
+ * open. Reading only the Disallow line turns "everything except these" into
+ * "everything", which blocked all 15 of GAMMA's products on a path the host
+ * explicitly permits.
+ */
 export function parseRobots(text: string): RobotsRules {
   const disallows: string[] = []
+  const allows: string[] = []
   let crawlDelayMs: number | undefined
   let inWildcardGroup = false
 
@@ -187,12 +202,41 @@ export function parseRobots(text: string): RobotsRules {
       inWildcardGroup = value === '*'
     } else if (inWildcardGroup && key === 'disallow' && value) {
       disallows.push(value)
+    } else if (inWildcardGroup && key === 'allow' && value) {
+      allows.push(value)
     } else if (inWildcardGroup && key === 'crawl-delay') {
       const secs = Number(value)
       if (Number.isFinite(secs)) crawlDelayMs = secs * 1000
     }
   }
-  return crawlDelayMs === undefined ? { disallows } : { disallows, crawlDelayMs }
+  return crawlDelayMs === undefined ? { disallows, allows } : { disallows, allows, crawlDelayMs }
+}
+
+/**
+ * RFC 9309 matching: the most specific rule wins, and Allow wins a tie.
+ *
+ * Specificity is the length of the pattern that matched, so `/v1/widget/*` (12
+ * characters) beats `/` (1). A path matched by no rule is allowed.
+ */
+export function isAllowedByRobots(pathname: string, rules: RobotsRules): boolean {
+  const longest = (patterns: string[]): number =>
+    patterns.reduce((best, p) => (matchesRobotsPattern(pathname, p) ? Math.max(best, p.length) : best), -1)
+
+  const deny = longest(rules.disallows)
+  if (deny === -1) return true
+  return longest(rules.allows) >= deny
+}
+
+/** `*` matches any run of characters; a trailing `$` anchors the end. */
+export function matchesRobotsPattern(pathname: string, pattern: string): boolean {
+  const anchored = pattern.endsWith('$')
+  const body = anchored ? pattern.slice(0, -1) : pattern
+  const source =
+    body
+      .split('*')
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*') + (anchored ? '$' : '')
+  return new RegExp('^' + source).test(pathname)
 }
 
 export function sleep(ms: number): Promise<void> {

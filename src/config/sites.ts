@@ -159,6 +159,102 @@ export const LOCAL_SITES: SiteRow[] = [
       'sale',
     ],
   },
+  {
+    id: 'local-sixzero-us',
+    brand_id: 'local-sixzero',
+    brand_slug: 'sixzero',
+    brand_name: 'Six Zero',
+    country_code: 'US',
+    // NOT www.sixzeropickleball.com. That is a separate Shopify store —
+    // Bokarina, Queensland, AUD (verified via /meta.json, store id
+    // 66773483824) — and crawling it would file Australian dollars as USD.
+    // The US store is its own shop (id 86121185565, Oxnard California, USD),
+    // reachable at us.sixzeropickleball.com; sixzeropickleball.us resolves to
+    // the same store.
+    base_url: 'https://us.sixzeropickleball.com',
+    platform: 'shopify',
+    currency: 'USD',
+    crawl_delay_ms: 1500,
+    notes:
+      'Shopify, Oxnard CA, USD. Separate store from the AU parent — do not crawl the .com. ' +
+      'Gemstone naming (Opal, Coral, Ruby, Sapphire, Quartz, Black Diamond); line names are ' +
+      'multi-word and prefix-sensitive, so Double Black Diamond must match before Black Diamond. ' +
+      'Shape is a real variant option, as on Selkirk. Thickness appears both in the title and as ' +
+      'an option and the two disagree in places; the option wins. ' +
+      'Reviews are Judge.me, but this shop answers the widget endpoint with the newer structured ' +
+      'JSON ({reviews[], pagination}) rather than the rendered HTML that CRBN and Paddletek ' +
+      'return. The adapter handles both.',
+    review_platform: 'judgeme',
+    review_config: { shopDomain: 'us.sixzeropickleball.com' },
+    assortment_handles: [
+      'paddles',
+      'all-paddles-warranty-registration',
+    ],
+  },
+  {
+    id: 'local-paddletek-us',
+    brand_id: 'local-paddletek',
+    brand_slug: 'paddletek',
+    brand_name: 'Paddletek',
+    country_code: 'US',
+    base_url: 'https://www.paddletek.com',
+    platform: 'shopify',
+    currency: 'USD',
+    crawl_delay_ms: 1500,
+    notes:
+      'Shopify, Chicago IL, USD. The cleanest naming grammar of the six: line (Bantam, Phoenix, ' +
+      'Tempest, Honeyfoam, The Reserve) plus a model code (TKO-C, EX-L Pro, Wave Pro-C). Suffix ' +
+      'letters are construction, not version — -C is carbon — so they stay in the model name. ' +
+      'Core thickness is a variant option published to one decimal (12.7mm / 14.3mm, being 1/2" ' +
+      'and 9/16"); nothing else in this set uses decimal thicknesses. ' +
+      'Reviews are Judge.me, legacy rendered-HTML widget response.',
+    review_platform: 'judgeme',
+    review_config: { shopDomain: 'www.paddletek.com' },
+    assortment_handles: [
+      'all-paddles',
+      'paddles',
+      'all-carbon-paddles',
+      'custom-paddles',
+    ],
+  },
+  {
+    id: 'local-gamma-us',
+    brand_id: 'local-gamma',
+    brand_slug: 'gamma',
+    brand_name: 'GAMMA',
+    country_code: 'US',
+    base_url: 'https://gammasports.com',
+    platform: 'shopify',
+    currency: 'USD',
+    crawl_delay_ms: 1500,
+    notes:
+      'Shopify, Pittsburgh PA, USD. The only multi-sport store in this set: of 237 products just ' +
+      '12 are pickleball paddles, the rest being tennis string, stringing machines, padel rackets ' +
+      'and court equipment. The assortment gate is therefore load-bearing rather than a ' +
+      'formality — product_type is exactly "Pickleball Paddle" on the twelve, and the collections ' +
+      'below are paddle-only. Two of the twelve are bundles (Rainmaker Bundle, Airbender 16 ' +
+      'Deluxe Box Set) rather than single paddles. ' +
+      'The numeral in a title is core thickness in mm (Airbender 10/13/16/22) and is written ' +
+      'bare, with no mm suffix, so the shared attribute parser will not read it. ' +
+      'Reviews are Yotpo — a fourth platform, read through the public widget API. The appKey is ' +
+      'public deployment config, printed on every page in the loader URL ' +
+      '(cdn-widgetsrepository.yotpo.com/v1/loader/<appKey>), not a credential.',
+    review_platform: 'yotpo',
+    review_config: { appKey: 'inZs4rbtVunQxdMq27e7cEj537ojrO1e8NGMAurh' },
+    assortment_handles: [
+      'pickleball-paddles',
+      'core-series',
+      'airbender',
+      'fusion',
+      'all-court-paddles',
+      'control-paddles',
+      'best-sellers-paddles',
+      'fusion-power-rainmaker-paddles',
+      // sale shelves
+      'blem-paddle-sale',
+      '25-off-select-performance-paddles',
+    ],
+  },
 ]
 
 export function localSites(brandSlug?: string, countryCode?: string): SiteRow[] {

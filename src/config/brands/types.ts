@@ -57,6 +57,19 @@ export interface BrandRules {
   shapeAliases: ReadonlyArray<{ pattern: RegExp; shape: PaddleShape }>
 
   /**
+   * Core thickness written as a bare numeral in the product title, with no
+   * 'mm' after it. Capture group 1 must be the number.
+   *
+   * GAMMA titles its paddles 'GAMMA Airbender 16 Pickleball Paddle' — the 16 is
+   * millimetres, but the shared parser requires the unit, so without this 54 of
+   * GAMMA's 62 SKUs resolve to a null thickness. Left unset for every brand
+   * that writes the unit, because a bare two-digit number in a title is
+   * ambiguous in general and only safe where the brand's naming makes it
+   * unambiguous. The 10-25mm sanity range still applies afterwards.
+   */
+  bareThicknessInTitle?: RegExp
+
+  /**
    * Play style — power / control / hybrid. Real merchandising for Selkirk,
    * absent for JOOLA, so it is optional per brand.
    */

@@ -88,7 +88,7 @@ export function extractVariantAttributes(
   const knownPlayers = rules?.players ?? []
   const colorway = resolveColorway(product, variant, knownPlayers)
   return {
-    coreThicknessMm: resolveThickness(product, variant),
+    coreThicknessMm: resolveThickness(product, variant, rules),
     colorway,
     ...splitColors(colorway?.value ?? null),
     endorsedPlayer: resolvePlayer(product, variant, knownPlayers),
@@ -97,7 +97,11 @@ export function extractVariantAttributes(
   }
 }
 
-function resolveThickness(product: RawProduct, variant: RawVariant): Resolved<number> | null {
+function resolveThickness(
+  product: RawProduct,
+  variant: RawVariant,
+  rules?: BrandRules,
+): Resolved<number> | null {
   // 1. An explicit option — the publisher stating it outright.
   for (const opt of variant.options) {
     if (!THICKNESS_OPTION_NAMES.has(opt.name.trim().toLowerCase())) continue
@@ -114,12 +118,22 @@ function resolveThickness(product: RawProduct, variant: RawVariant): Resolved<nu
   if (fromProductTitle !== null) {
     return { value: fromProductTitle, source: 'title', confidence: 0.9 }
   }
-  // 4. A tag such as '16mm'.
+  // 4. A bare numeral in the title, for brands that omit the unit. Opt-in per
+  //    brand, because '16' in a title means millimetres only where the brand's
+  //    naming says so. The 10-25mm range check still applies.
+  if (rules?.bareThicknessInTitle) {
+    const m = rules.bareThicknessInTitle.exec(product.title)
+    const mm = m?.[1] === undefined ? NaN : Number(m[1])
+    if (Number.isFinite(mm) && mm >= 10 && mm <= 25) {
+      return { value: mm, source: 'title', confidence: 0.85 }
+    }
+  }
+  // 5. A tag such as '16mm'.
   for (const tag of product.tags) {
     const mm = matchThickness(tag)
     if (mm !== null) return { value: mm, source: 'tag', confidence: 0.7 }
   }
-  // 5. The PDP copy. Lines without a generation (Vision, Dash, Beacon) state the
+  // 6. The PDP copy. Lines without a generation (Vision, Dash, Beacon) state the
   //    core only in prose. Accepted ONLY when every in-range measurement in the
   //    body agrees — a description that mentions both 14mm and 16mm is talking
   //    about a range or a cross-sell, and guessing there would be worse than

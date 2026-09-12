@@ -2,6 +2,9 @@ import type { BrandRules } from './types.js'
 import { JOOLA_RULES } from './joola.js'
 import { SELKIRK_RULES } from './selkirk.js'
 import { CRBN_RULES } from './crbn.js'
+import { SIXZERO_RULES } from './sixzero.js'
+import { PADDLETEK_RULES } from './paddletek.js'
+import { GAMMA_RULES } from './gamma.js'
 
 export type { BrandRules } from './types.js'
 export { lineMap } from './types.js'
@@ -10,6 +13,9 @@ const REGISTRY = new Map<string, BrandRules>([
   [JOOLA_RULES.slug, JOOLA_RULES],
   [SELKIRK_RULES.slug, SELKIRK_RULES],
   [CRBN_RULES.slug, CRBN_RULES],
+  [SIXZERO_RULES.slug, SIXZERO_RULES],
+  [PADDLETEK_RULES.slug, PADDLETEK_RULES],
+  [GAMMA_RULES.slug, GAMMA_RULES],
 ])
 
 /**

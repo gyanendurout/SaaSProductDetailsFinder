@@ -1,0 +1,598 @@
+{
+  "_comment": "Hand-authored descriptions merged into docs/DATABASE_REFERENCE.md by scripts/export-schema-doc.mjs. Structure, types, keys and row counts come from the live database; only the prose lives here. Keyed by relation, then column.",
+
+  "layers": {
+    "reference": "Layer 1 — reference. Slow-moving facts that everything else points at.",
+    "source-mirror": "Layer 2 — source mirror. What the storefront literally says, stored before any interpretation.",
+    "canonical": "Layer 3 — canonical. What we derive: the paddle hierarchy reconciled across storefronts that model it differently.",
+    "vocabulary": "Vocabulary. Controlled value lists, referenced by foreign key so adding a brand's new word is an INSERT rather than a migration.",
+    "timeseries": "Time series. Append-only history. These are the only tables that accumulate; everything else is overwritten in place each crawl.",
+    "reviews": "Reviews. Customer text, brand replies, and the per-run aggregate that makes sentiment-over-time a range scan.",
+    "ops": "Operations. Crawl bookkeeping — which run wrote what, and what failed."
+  },
+
+  "relations": {
+    "brands": {
+      "layer": "reference",
+      "purpose": "One row per brand. The top of the ownership chain: a site belongs to a brand, and everything else hangs off a site.",
+      "columns": {
+        "id": "Surrogate key.",
+        "slug": "URL-safe identifier, e.g. `joola`. Unique. This is what `?brand=` carries in the dashboard.",
+        "name": "Display name as the brand writes it, e.g. `JOOLA`.",
+        "created_at": "When the row was inserted."
+      }
+    },
+
+    "countries": {
+      "layer": "reference",
+      "purpose": "ISO country list with a default currency, so a storefront in a new market does not invent its own code.",
+      "columns": {
+        "code": "ISO-3166-1 alpha-2, e.g. `US`. Primary key.",
+        "name": "Display name.",
+        "currency": "ISO-4217 default for the market, e.g. `USD`. A site may override it."
+      }
+    },
+
+    "sites": {
+      "layer": "reference",
+      "purpose": "One row per (brand, country) storefront. This is the crawl target, and the unit that country expansion adds rows to — the same paddle sold in the US and Australia belongs to two sites.",
+      "columns": {
+        "id": "Surrogate key.",
+        "brand_id": "Owning brand.",
+        "country_code": "Market this storefront serves.",
+        "base_url": "Storefront root, e.g. `https://joola.com`.",
+        "platform": "`shopify` | `woocommerce` | `custom`. Selects the catalogue adapter.",
+        "currency": "Currency this storefront prices in.",
+        "locale": "Content locale, default `en-US`.",
+        "assortment_handles": "Which source collections make up the assortment we care about. Declared in `src/config/` and mirrored here so a query can explain why a product was crawled.",
+        "is_active": "Excluded from scheduled crawls when false.",
+        "crawl_delay_ms": "Politeness delay between requests. Raised where robots.txt asks for it.",
+        "notes": "Free text for whoever onboarded the site.",
+        "created_at": "When the row was inserted.",
+        "review_platform": "`bazaarvoice` | `okendo` | `judgeme` | null. Selects the review adapter. A NULL here is why a brand silently collects zero reviews.",
+        "review_config": "Credentials the review adapter needs — Bazaarvoice client and displayCode, Okendo subscriberId, Judge.me shop domain. Config, not schema, so brand #4 stays a config change."
+      }
+    },
+
+    "players": {
+      "layer": "reference",
+      "purpose": "Endorsing athletes. Colourways on some brands are named after players (`Blaze Red (Ben Johns)`), which makes the player a real analytic dimension rather than a string in a title.",
+      "columns": {
+        "id": "Surrogate key.",
+        "brand_id": "Brand the endorsement belongs to.",
+        "name": "Display name.",
+        "slug": "URL-safe identifier, unique within the brand.",
+        "created_at": "When the row was inserted."
+      }
+    },
+
+    "technologies": {
+      "layer": "reference",
+      "purpose": "Brand technology dictionary — `Carbon Friction Surface`, `Propulsion Core`. Currently empty: the PDP stage that would populate it has never run.",
+      "columns": {
+        "id": "Surrogate key.",
+        "brand_id": "Owning brand.",
+        "name": "Marketing name as published.",
+        "slug": "URL-safe identifier, unique within the brand.",
+        "description": "Long-form explanation where the brand publishes one.",
+        "first_seen_at": "First crawl that saw this technology named."
+      }
+    },
+
+    "product_lines": {
+      "layer": "canonical",
+      "purpose": "A family of paddles carried across generations — `Perseus`, `VANGUARD`, `SLK`.",
+      "columns": {
+        "id": "Surrogate key.",
+        "brand_id": "Owning brand.",
+        "slug": "URL-safe identifier, e.g. `perseus`. Unique within the brand.",
+        "name": "Display name, e.g. `Perseus`.",
+        "description": "Optional blurb.",
+        "created_at": "When the row was inserted."
+      }
+    },
+
+    "generations": {
+      "layer": "canonical",
+      "purpose": "A brand's version marker — `Gen 1`, `Pro IV`, `Pro V`, `3S`. Separated from the line so `Perseus Pro V` can be compared with `Perseus Pro IV`.",
+      "columns": {
+        "id": "Surrogate key.",
+        "brand_id": "Owning brand.",
+        "slug": "URL-safe identifier, e.g. `pro-v`.",
+        "name": "Display name, e.g. `Pro V`.",
+        "sequence": "Ordering for \"which version is newer\": Gen 1 = 1, Pro IV = 4, Pro V = 5. NULL where the brand publishes no ordering.",
+        "released_at": "Release date where known.",
+        "created_at": "When the row was inserted."
+      }
+    },
+
+    "models": {
+      "layer": "canonical",
+      "purpose": "The reconciled paddle: line x generation x optional sub-line. This is the unit a person means by \"a paddle\", and the level at which two brands can be compared.",
+      "columns": {
+        "id": "Surrogate key.",
+        "brand_id": "Owning brand.",
+        "product_line_id": "Line this model belongs to. NULL where the line could not be resolved.",
+        "generation_id": "Generation marker. NULL where the line carries no generation designation.",
+        "sub_line": "Variant of the line — `Dual`, `CFS`, or NULL.",
+        "slug": "URL-safe identifier, e.g. `perseus-pro-v`. Unique within the brand.",
+        "name": "Display name, e.g. `Perseus Pro V`.",
+        "skill_tier": "FK to `skill_tiers`. `pro` | `performance` | `premium` | `recreational` | `junior` | `unknown`.",
+        "shape": "FK to `shapes`. **Currently `unknown` on every row** — nothing rolls the variant shapes up into it. Read `v_model_overview.shapes` (aggregated from the variants) instead.",
+        "play_style": "FK to `play_styles`. `power` | `control` | `hybrid` | `unknown`. Selkirk merchandises this as a first-class dimension; JOOLA does not use it at all, which is why the default is `unknown`.",
+        "created_at": "When the row was inserted.",
+        "updated_at": "Maintained by the `models_touch` trigger on every update."
+      },
+      "notes": [
+        "`shape` is dead weight today: all 80 rows say `unknown`, because the value is never derived from the variants that do carry a shape. The catalogue page reads the aggregated `shapes` array from `v_model_overview` instead."
+      ]
+    },
+
+    "categories": {
+      "layer": "source-mirror",
+      "purpose": "Collections and menu nodes as published by the site. Self-referencing, so the mega-menu tree survives intact.",
+      "columns": {
+        "id": "Surrogate key.",
+        "site_id": "Storefront this collection belongs to.",
+        "source_category_id": "The platform's own id, e.g. a Shopify collection id. Unique per site.",
+        "handle": "URL slug, e.g. `professional-pickleball-paddles`.",
+        "title": "Display title, e.g. `Pro`.",
+        "description": "Collection blurb where published.",
+        "url": "Canonical URL.",
+        "parent_id": "Parent collection, for the menu tree.",
+        "depth": "Depth in that tree; 0 is top level.",
+        "nav_path": "Human breadcrumb, e.g. `{Pickleball,Paddles,Pro}`.",
+        "category_role": "FK to `category_roles`. Derived: what this collection *means*, which drives the UI's facet grouping.",
+        "position": "Sort position as published.",
+        "in_main_nav": "Whether it appears in the primary navigation.",
+        "product_count": "Count the storefront claims for this collection.",
+        "first_seen_at": "First crawl that saw it.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "is_active": "False once the collection stops appearing."
+      }
+    },
+
+    "products": {
+      "layer": "source-mirror",
+      "purpose": "One row per product per site. The same physical paddle sold in two markets is two rows — that is intentional, because price, stock and reviews differ per market.",
+      "columns": {
+        "id": "Surrogate key.",
+        "site_id": "Storefront this listing belongs to.",
+        "model_id": "Canonical model, resolved during the normalize stage. NULL until resolution succeeds.",
+        "source_product_id": "The platform's own product id. Unique per site.",
+        "handle": "URL slug.",
+        "title": "Listing title as published.",
+        "vendor": "Vendor field from the platform.",
+        "product_type": "Product type field from the platform.",
+        "tags": "Platform tags. GIN-indexed; a source of derived attributes.",
+        "body_html": "Raw description HTML.",
+        "url": "Canonical product URL.",
+        "image_url": "Primary image.",
+        "published_at": "Publication timestamp from the platform.",
+        "source_created_at": "Creation timestamp from the platform.",
+        "source_updated_at": "Last-modified timestamp from the platform.",
+        "is_in_assortment": "**The assortment gate.** Accessories and apparel slip into paddle collections; every analytic query filters on this. Note it is applied in application code, not inside the views.",
+        "first_seen_at": "First crawl that saw the listing.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "is_active": "False once the listing stops appearing."
+      }
+    },
+
+    "product_categories": {
+      "layer": "source-mirror",
+      "purpose": "Which collections a product sits in, over time. Carries first/last seen rather than being a plain join table, because a product entering the `Sale` collection is a signal in its own right.",
+      "columns": {
+        "product_id": "Product. Half of the composite primary key.",
+        "category_id": "Collection. Other half of the composite primary key.",
+        "position": "Merchandising position within the collection.",
+        "first_seen_at": "First crawl that saw this membership.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "is_active": "False once the product leaves the collection."
+      }
+    },
+
+    "variants": {
+      "layer": "source-mirror",
+      "purpose": "The SKU — the atomic unit of the price and stock time series. Raw option values are kept exactly as the source gave them, so a normalization bug is always recoverable without a re-crawl.",
+      "columns": {
+        "id": "Surrogate key.",
+        "product_id": "Parent listing.",
+        "site_id": "Storefront, denormalised so snapshots can filter without a join.",
+        "source_variant_id": "The platform's own variant id. Unique per site.",
+        "sku": "Retailer SKU where published.",
+        "barcode": "Barcode where published.",
+        "title": "Variant title as published, e.g. `16mm / Blaze Red (Ben Johns)`.",
+        "position": "Sort position within the product.",
+        "image_url": "Variant-specific image.",
+        "option1_name": "Raw option label as the source gave it, e.g. `Thickness`.",
+        "option1_value": "Raw option value, e.g. `16mm`.",
+        "option2_name": "Raw option label.",
+        "option2_value": "Raw option value.",
+        "option3_name": "Raw option label.",
+        "option3_value": "Raw option value.",
+        "core_thickness_mm": "Derived. Core thickness, e.g. 14.0 or 16.0.",
+        "colorway": "Derived. Colourway name, e.g. `Blaze Red`.",
+        "color_primary": "Derived. Primary colour where separable.",
+        "color_secondary": "Derived. Secondary colour where separable.",
+        "endorsed_player_id": "Derived. FK to `players` when the colourway is named after an athlete.",
+        "weight_grams": "Derived. Published weight.",
+        "grip_length_mm": "Derived. Published grip length.",
+        "paddle_length_mm": "Derived. Published paddle length.",
+        "paddle_width_mm": "Derived. Published paddle width.",
+        "shape": "Derived. FK to `shapes`. This is the field that actually carries shape data — the model-level column does not.",
+        "attr_source": "Which input won for each derived attribute, e.g. `{\"core_thickness_mm\":\"title\"}`. Candidates are option value, title, tag, collection, PDP, LLM or manual.",
+        "attr_confidence": "0.00-1.00, the lowest confidence across the derived attributes on this row.",
+        "attributes": "Long-tail specs that do not deserve a column of their own.",
+        "first_seen_at": "First crawl that saw the SKU.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "is_active": "False once the SKU stops appearing."
+      }
+    },
+
+    "product_content": {
+      "layer": "source-mirror",
+      "purpose": "PDP-derived copy and specs, versioned by content hash so a re-crawl that changed nothing writes no row. **Empty** — the stage that fills it has never been run.",
+      "columns": {
+        "id": "Surrogate key.",
+        "product_id": "Parent listing.",
+        "content_hash": "SHA-256 of the normalised payload. Unique per product, and the mechanism that suppresses no-op rows.",
+        "description": "Long-form description text.",
+        "specs": "Spec table as published, e.g. `{'Core':'16mm Polypropylene'}`.",
+        "technologies": "Technology names named on the page.",
+        "media": "Images and video referenced by the PDP.",
+        "breadcrumb": "On-page breadcrumb trail.",
+        "captured_at": "When this version was captured."
+      }
+    },
+
+    "product_technologies": {
+      "layer": "source-mirror",
+      "purpose": "Which technologies a product claims, over time. **Empty**, because `technologies` is empty.",
+      "columns": {
+        "product_id": "Product. Half of the composite primary key.",
+        "technology_id": "Technology. Other half.",
+        "first_seen_at": "First crawl that saw the claim.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "is_active": "False once the claim disappears from the product."
+      }
+    },
+
+    "skill_tiers": {
+      "layer": "vocabulary",
+      "purpose": "Controlled list behind `models.skill_tier`. Replaced a CHECK constraint so a brand shipping an unfamiliar tier word is an INSERT over the REST API, not a migration a human has to paste into a dashboard.",
+      "columns": {
+        "code": "Stored value, e.g. `pro`. Primary key, referenced by FK.",
+        "label": "Display label, e.g. `Pro`.",
+        "sort_order": "Presentation order. `unknown` sorts last at 900.",
+        "notes": "Free text."
+      }
+    },
+
+    "shapes": {
+      "layer": "vocabulary",
+      "purpose": "Controlled list behind `variants.shape` and `models.shape`.",
+      "columns": {
+        "code": "Stored value, e.g. `elongated`. Primary key.",
+        "label": "Display label.",
+        "sort_order": "Presentation order.",
+        "notes": "Free text."
+      }
+    },
+
+    "play_styles": {
+      "layer": "vocabulary",
+      "purpose": "Controlled list behind `models.play_style`.",
+      "columns": {
+        "code": "Stored value: `power`, `control`, `hybrid`, `unknown`. Primary key.",
+        "label": "Display label.",
+        "sort_order": "Presentation order.",
+        "notes": "Free text."
+      }
+    },
+
+    "category_roles": {
+      "layer": "vocabulary",
+      "purpose": "Controlled list behind `categories.category_role` — what a collection means, as opposed to what it is called.",
+      "columns": {
+        "code": "Stored value: `sport`, `assortment`, `skill_tier`, `generation`, `series`, `signature`, `play_style`, `shape`, `material`, `sale`, `accessory`, `other`. Primary key.",
+        "label": "Display label.",
+        "sort_order": "Presentation order.",
+        "notes": "Free text."
+      }
+    },
+
+    "crawl_runs": {
+      "layer": "ops",
+      "purpose": "One row per crawl. Everything a run writes carries its `run_id`, so a bad run can be identified, explained and excluded from charts.",
+      "columns": {
+        "id": "Run id. Stamped onto every row the run writes.",
+        "site_id": "Storefront crawled.",
+        "run_type": "`scheduled` | `manual` | `backfill`.",
+        "status": "`pending` | `running` | `done` | `partial` | `error`. A run stuck at `running` means `finaliseRun()` was rejected.",
+        "stages_requested": "Stages asked for.",
+        "stages_done": "Stages that completed. The gap between the two is the pipeline-health panel.",
+        "categories_found": "Collections discovered.",
+        "products_found": "Listings discovered.",
+        "products_new": "Listings seen for the first time.",
+        "variants_found": "SKUs discovered.",
+        "variants_new": "SKUs seen for the first time.",
+        "snapshots_written": "Rows appended to `variant_snapshots`.",
+        "events_written": "Rows appended to `variant_events`.",
+        "stats": "Whole `RunStats` object. Every stat also needs a column here or the finalising update is rejected.",
+        "error_message": "Failure detail where the run did not complete.",
+        "started_at": "Run start.",
+        "finished_at": "Run end. NULL while running, or if the run never finalised.",
+        "created_at": "Row insert time.",
+        "reviews_found": "Reviews fetched this run. **Counts fetched rows, not inserted ones** — it overstates when a crawl re-reads reviews it already holds.",
+        "reviews_new": "Reviews seen for the first time. Subject to the same overcount.",
+        "review_responses_new": "Brand replies seen for the first time."
+      },
+      "notes": [
+        "`reviews_found` / `reviews_new` count what was fetched rather than what was inserted. One Selkirk run logged 13,136 against 5,777 rows actually stored."
+      ]
+    },
+
+    "crawl_errors": {
+      "layer": "ops",
+      "purpose": "One row per failure inside a run, so a partial crawl can be explained without reading logs.",
+      "columns": {
+        "id": "Surrogate key.",
+        "run_id": "Run that failed.",
+        "stage": "Pipeline stage that raised it.",
+        "target": "The URL or handle that failed.",
+        "error_type": "`http_error` | `parse_error` | `timeout` | `stage_error` | `normalize_error` | `db_error`.",
+        "error_message": "Detail.",
+        "status_code": "HTTP status where the failure was a response.",
+        "created_at": "When it was recorded."
+      }
+    },
+
+    "variant_snapshots": {
+      "layer": "timeseries",
+      "purpose": "Append-only. One row per SKU per successful run — the table the whole project exists for. A failed run writes no snapshots, so a site outage can never be mistaken for a catalogue-wide stockout.",
+      "columns": {
+        "id": "bigserial surrogate key.",
+        "run_id": "Run that wrote it.",
+        "variant_id": "SKU observed.",
+        "site_id": "Storefront, denormalised so site-wide range scans need no join.",
+        "observed_at": "**When we looked — not when the price changed.** Charts must step-interpolate between points, never linearly interpolate.",
+        "price": "Selling price at that moment.",
+        "compare_at_price": "Struck-through reference price, where the storefront publishes one.",
+        "currency": "Currency of both prices.",
+        "is_on_sale": "Generated, stored: `compare_at_price > price`, both non-null.",
+        "discount_pct": "Generated, stored: percentage off, rounded to 2dp, else 0. Stored so \"everything over 20% off on any past date\" is an index scan rather than a scan plus arithmetic.",
+        "is_available": "In stock at that moment. NULL where the storefront does not say.",
+        "inventory_quantity": "Units on hand. NULL when not exposed, which is most of the time.",
+        "position_in_category": "Merchandising position within the primary collection. Movement here is an early signal of a push or a wind-down."
+      },
+      "notes": [
+        "Unique on `(run_id, variant_id)`, which guards against double-writing a SKU inside one run.",
+        "Indexed with BRIN on `observed_at` — tiny, and the right shape for an append-only time-ordered column.",
+        "Sizing note from the migration: at roughly 10M rows this should become a monthly-partitioned table. Only the pipeline and the views read it directly, so that stays a contained change."
+      ]
+    },
+
+    "variant_events": {
+      "layer": "timeseries",
+      "purpose": "The derived change log, written by the diff stage by comparing a run against the previous successful one. Everything here is recomputable from `variant_snapshots`; it exists so \"what changed\" needs no window functions over the full history.",
+      "columns": {
+        "id": "bigserial surrogate key.",
+        "run_id": "Run that detected the change.",
+        "variant_id": "SKU that changed.",
+        "site_id": "Storefront, denormalised.",
+        "event_type": "`listed`, `delisted`, `price_increase`, `price_decrease`, `discount_started`, `discount_deepened`, `discount_ended`, `went_oos`, `back_in_stock`, `category_added`, `category_removed`.",
+        "occurred_at": "When the transition was observed.",
+        "old_value": "Prior value, as text.",
+        "new_value": "New value, as text.",
+        "delta_numeric": "Signed price delta where relevant.",
+        "delta_pct": "Percentage delta where relevant.",
+        "context": "Extra detail for the event type.",
+        "created_at": "Row insert time."
+      },
+      "notes": [
+        "Only 1 row exists: a change needs two observations to sit between, and the crawl has not run often enough to produce more."
+      ]
+    },
+
+    "reviews": {
+      "layer": "reviews",
+      "purpose": "One row per customer review, ever. Upserted on its source id rather than re-inserted per run, because a review's text is written once — but the things around it (helpful counts, brand replies) do move.",
+      "columns": {
+        "id": "Surrogate key.",
+        "site_id": "Storefront the review was left on.",
+        "product_id": "The listing it is attached to. **Exactly one**, even for a review syndicated across a paddle's twelve colourway listings — see the known limitation below.",
+        "review_platform": "`bazaarvoice` | `okendo` | `judgeme`. Part of the natural key, because source ids collide across platforms.",
+        "source_review_id": "The platform's own id. Unique within `(site_id, review_platform)`.",
+        "rating": "Stars. numeric, not integer, because Okendo can emit halves.",
+        "rating_range": "Scale maximum, default 5.",
+        "title": "Review headline. Weighted above body in the search vector.",
+        "body": "Review text.",
+        "pros": "Structured pros where the platform collects them separately.",
+        "cons": "Structured cons.",
+        "author_name": "Display name only — whatever the storefront already shows in public.",
+        "author_id": "Platform's author id.",
+        "author_location": "Free-text location. Arrives as a nested object on Okendo and is flattened on ingest.",
+        "is_verified_buyer": "Platform confirmed a purchase.",
+        "is_recommended": "Reviewer recommends the product.",
+        "is_incentivized": "Review was given in exchange for something.",
+        "is_syndicated": "Platform marked it as syndicated from elsewhere.",
+        "is_ratings_only": "A star with no words. These must count toward the average but must never surface as an empty card in a text search.",
+        "helpful_count": "Current helpful votes, refreshed each run.",
+        "unhelpful_count": "Current unhelpful votes.",
+        "response_count": "Number of brand replies.",
+        "photo_count": "Attached photos.",
+        "video_count": "Attached videos.",
+        "variant_label": "Which SKU the reviewer bought, as the platform labels it.",
+        "source_variant_id": "Platform's variant id where given.",
+        "context_data": "Platform-specific structured extras kept whole rather than flattened — Bazaarvoice Age / Gender / LengthOfOwnership, secondary ratings, badges. Raw material for later sentiment work.",
+        "media": "Attached media descriptors.",
+        "submitted_at": "**When the customer wrote it.**",
+        "source_updated_at": "Last edit timestamp from the platform.",
+        "first_seen_at": "When we first saw it. The gap from `submitted_at` is our own collection lag.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "first_seen_run_id": "Run that first stored it. Drives the arrival-rate metric.",
+        "last_seen_run_id": "Most recent run that saw it.",
+        "language_code": "Language where the platform reports one.",
+        "search_tsv": "Generated, stored tsvector. Title weighted A, body B, pros/cons C, so `cracked` in a headline outranks it in a paragraph. GIN-indexed."
+      },
+      "notes": [
+        "Unique on `(site_id, review_platform, source_review_id)` — `product_id` is deliberately *not* in that key, because one customer's opinion syndicated across twelve colourway listings is one opinion, not twelve.",
+        "The consequence is the known limitation: the row can carry only one `product_id`, so filtering by any other listing the review appears under finds nothing. 26 listings hold no reviews of their own for this reason.",
+        "A partial index on `(site_id, submitted_at desc) where rating <= 3` backs the most expensive common query, \"show me the complaints\"."
+      ]
+    },
+
+    "review_responses": {
+      "layer": "reviews",
+      "purpose": "The brand reply chain. No platform guarantees a stable id for a reply, so the dedupe key is a hash of the body — replies are edited rarely, and an edited reply is genuinely a new thing to have seen.",
+      "columns": {
+        "id": "Surrogate key.",
+        "review_id": "Review being replied to.",
+        "site_id": "Storefront, denormalised.",
+        "source_response_id": "Platform's id where it provides one. Often NULL.",
+        "response_hash": "SHA-256 of the normalised body. Unique per review, and the actual dedupe key.",
+        "author_name": "Who replied.",
+        "department": "Team label, e.g. `Team JOOLA`.",
+        "response_source": "Which endpoint it came from, e.g. `mc-api`.",
+        "body": "Reply text.",
+        "responded_at": "When the brand replied.",
+        "first_seen_at": "When we first saw the reply.",
+        "last_seen_at": "Most recent crawl that saw it.",
+        "first_seen_run_id": "Run that first stored it."
+      },
+      "notes": [
+        "All 744 rows belong to JOOLA and Selkirk. CRBN has zero — verified against the source: all 24 CRBN products render an empty `jdgm-rev__reply` container, so the brand writes no replies at all."
+      ]
+    },
+
+    "product_review_snapshots": {
+      "layer": "reviews",
+      "purpose": "Append-only, one row per product per run. The series that answers the question the feature exists for: how a product's reception changes over months. Deliberately denormalised into star buckets so a distribution chart is one row, not a group-by over every review ever written.",
+      "columns": {
+        "id": "bigserial surrogate key.",
+        "run_id": "Run that wrote it.",
+        "product_id": "Listing observed.",
+        "site_id": "Storefront, denormalised.",
+        "observed_at": "When we looked.",
+        "reported_total": "What the platform itself claims its total is. Kept apart from our own count so a truncated crawl is visible rather than silent.",
+        "review_count": "Rows we actually hold for this listing.",
+        "with_text_count": "Of those, how many carry words.",
+        "ratings_only_count": "Of those, how many are stars alone.",
+        "average_rating": "Mean rating across held rows.",
+        "rating_1_count": "One-star bucket.",
+        "rating_2_count": "Two-star bucket.",
+        "rating_3_count": "Three-star bucket.",
+        "rating_4_count": "Four-star bucket.",
+        "rating_5_count": "Five-star bucket.",
+        "recommended_count": "Reviewers who recommend.",
+        "not_recommended_count": "Reviewers who do not.",
+        "verified_count": "Verified buyers.",
+        "with_response_count": "Reviews carrying a brand reply.",
+        "new_review_count": "Reviews whose `first_seen_run_id` is this run — the arrival rate, which leads the average. A drop to zero on a product that averaged ten a week is worth knowing well before the average moves."
+      },
+      "notes": [
+        "Summing `review_count` across this table double-counts syndicated reviews: it records the platform's number for *every* listing a review appears under. It claims 24,911 placements over 14,840 actual reviews. Use `v_review_brand_counts` / `v_review_product_counts` for counts that match what clicking a filter returns."
+      ]
+    },
+
+    "schema_migrations": {
+      "layer": "ops",
+      "purpose": "Migration ledger written by `scripts/migrate.ts`.",
+      "columns": {
+        "version": "Migration version string.",
+        "name": "Migration filename.",
+        "applied_at": "When it was applied."
+      },
+      "notes": [
+        "Holds 4 rows against 7 migration files. Migrations 0005, 0006 and 0007 were applied by hand through the Supabase SQL editor, which does not write this ledger, so it understates what the database actually has."
+      ]
+    }
+  },
+
+  "views": {
+    "v_variant_current": {
+      "purpose": "Current state of every SKU: the newest snapshot joined through to the canonical model. The workhorse for catalogue browsing.",
+      "derived": {
+        "observed_at": "From the newest `variant_snapshots` row for the SKU, via a LATERAL join.",
+        "price": "Newest snapshot price.",
+        "is_on_sale": "Newest snapshot's generated sale flag.",
+        "discount_pct": "Newest snapshot's generated discount."
+      },
+      "notes": [
+        "Returns all 361 SKUs. It does **not** apply the `is_in_assortment` gate — application code does that ([queries.ts:161](../src/lib/queries.ts#L161)), which is why the dashboard shows 346."
+      ]
+    },
+    "v_model_overview": {
+      "purpose": "One row per model with its SKUs rolled up — the catalogue table's source.",
+      "derived": {
+        "sku_count": "Distinct in-assortment SKUs.",
+        "thicknesses_mm": "Distinct non-null core thicknesses.",
+        "colorways": "Distinct non-null colourways.",
+        "shapes": "Distinct variant shapes excluding `unknown`. **This is the real shape data** — `models.shape` is `unknown` everywhere.",
+        "endorsed_players": "Distinct endorsing athletes.",
+        "price_min": "Lowest current price across the model's SKUs.",
+        "price_max": "Highest current price.",
+        "skus_in_stock": "SKUs currently available.",
+        "skus_on_sale": "SKUs currently discounted.",
+        "best_discount_pct": "Deepest current discount."
+      },
+      "notes": [
+        "Filters `where vc.is_in_assortment`, so it returns 76 of the 80 rows in `models`."
+      ]
+    },
+    "v_active_discounts": {
+      "purpose": "Every in-assortment SKU currently on sale, deepest discount first.",
+      "notes": ["Filters on `is_on_sale and is_in_assortment`; ordered by `discount_pct desc`."]
+    },
+    "v_recent_changes": {
+      "purpose": "The change feed — `variant_events` joined to the names a reader needs, newest first. Carries `brand_slug` so the dashboard can scope without a join."
+    },
+    "v_variant_price_daily": {
+      "purpose": "Daily OHLC-style rollup of the price series, one row per SKU per UTC day.",
+      "derived": {
+        "day": "`observed_at` cast to a UTC date.",
+        "price_min": "Lowest price seen that day.",
+        "price_max": "Highest price seen that day.",
+        "price_close": "Last price observed that day.",
+        "compare_at_close": "Last compare-at price that day.",
+        "discount_pct_close": "Last discount that day.",
+        "was_on_sale": "True if on sale at any point that day.",
+        "was_available": "True if in stock at any point that day.",
+        "was_always_available": "True only if in stock at every observation that day.",
+        "observations": "How many times we looked that day."
+      }
+    },
+    "v_category_tree": {
+      "purpose": "The collection tree with parent titles and active product counts resolved.",
+      "derived": { "active_products": "Count of active `product_categories` rows for the collection." }
+    },
+    "v_review_search": {
+      "purpose": "One row per review, pre-joined to everything the search page filters on, so the UI never fans out joins per row.",
+      "notes": ["14,840 rows — one per review, no duplication."]
+    },
+    "v_product_reviews_current": {
+      "purpose": "Latest review standing per product: the aggregate shown next to price on catalogue and model pages.",
+      "notes": [
+        "142 rows — one per *product*, including the 42 that have no snapshot (LEFT JOIN LATERAL), so it is not a list of products that have reviews."
+      ]
+    },
+    "v_review_product_counts": {
+      "purpose": "One row per product that genuinely has reviews stored against it. Counts the `reviews` table itself rather than the snapshots.",
+      "derived": {
+        "review_count": "Rows held for the product.",
+        "with_text_count": "Of those, not ratings-only.",
+        "verified_count": "Verified buyers.",
+        "average_rating": "Mean rating.",
+        "latest_review_at": "Most recent `submitted_at`."
+      },
+      "notes": [
+        "100 rows, against 126 listings that the snapshots claimed had reviews. The 26 missing are the syndication casualties.",
+        "Added by migration 0007 to make a filter chip's number and the result of clicking it the same number."
+      ]
+    },
+    "v_review_brand_counts": {
+      "purpose": "One row per brand, counting distinct stored reviews — the number behind each brand chip.",
+      "notes": ["CRBN 6,202 · Selkirk 6,161 · JOOLA 2,477, summing to the 14,840 rows in `reviews`."]
+    }
+  }
+}

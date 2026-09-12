@@ -2,14 +2,16 @@ import { PoliteClient } from '../../lib/http.js'
 import { BazaarvoiceReviewAdapter } from './bazaarvoice.js'
 import { OkendoReviewAdapter } from './okendo.js'
 import { JudgeMeReviewAdapter } from './judgeme.js'
+import { YotpoReviewAdapter } from './yotpo.js'
 import type { ReviewSourceAdapter } from './types.js'
 
 export * from './types.js'
 export { BazaarvoiceReviewAdapter } from './bazaarvoice.js'
 export { OkendoReviewAdapter } from './okendo.js'
 export { JudgeMeReviewAdapter } from './judgeme.js'
+export { YotpoReviewAdapter } from './yotpo.js'
 
-export const REVIEW_PLATFORMS = ['bazaarvoice', 'okendo', 'judgeme'] as const
+export const REVIEW_PLATFORMS = ['bazaarvoice', 'okendo', 'judgeme', 'yotpo'] as const
 export type ReviewPlatform = (typeof REVIEW_PLATFORMS)[number]
 
 /**
@@ -33,6 +35,8 @@ export function buildReviewAdapter(
       return new OkendoReviewAdapter(http)
     case 'judgeme':
       return new JudgeMeReviewAdapter(http)
+    case 'yotpo':
+      return new YotpoReviewAdapter(http)
     default:
       throw new Error(
         `Unknown review_platform "${platform}". Expected one of ${REVIEW_PLATFORMS.join(', ')}, ` +

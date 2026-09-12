@@ -61,7 +61,21 @@ export async function selectAll<T>(
   }
 }
 
-/** Chunked upsert — PostgREST rejects very large payloads. */
+/**
+ * Chunked upsert — PostgREST rejects very large payloads.
+ *
+ * Retried, for the same reason reads are. Measured over one six-brand crawl,
+ * every failure of any kind was a Supabase `Gateway Timeout`: the three that
+ * landed on a select were retried and recovered silently, while the three that
+ * landed on this upsert were fatal and cost four products their reviews. The
+ * difference was not the failure — it was that only one side of the client
+ * retried.
+ *
+ * Retrying a write is safe here specifically because these are upserts: they
+ * carry an `onConflict` key and are therefore idempotent by construction, so a
+ * request that actually succeeded before the gateway gave up is re-applied to
+ * the same rows rather than duplicated.
+ */
 export async function upsertAll<T extends object>(
   table: string,
   rows: T[],
@@ -70,8 +84,10 @@ export async function upsertAll<T extends object>(
 ): Promise<void> {
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize)
-    const { error } = await db().from(table).upsert(chunk, { onConflict })
-    if (error) throw new Error(`upsert ${table}: ${error.message}`)
+    await withRetry(async () => {
+      const { error } = await db().from(table).upsert(chunk, { onConflict })
+      if (error) throw new Error(`upsert ${table}: ${error.message}`)
+    }, `upsert ${table}`)
   }
 }
 
@@ -89,17 +105,40 @@ export async function upsertReturning<T extends object, R>(
   const out: R[] = []
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize)
-    const { data, error } = await db()
-      .from(table)
-      .upsert(chunk, { onConflict })
-      .select(columns)
-    if (error) throw new Error(`upsert ${table}: ${error.message}`)
-    out.push(...((data ?? []) as R[]))
+    // Idempotent for the same reason upsertAll is: an onConflict key means a
+    // retry updates the same rows rather than adding more.
+    const rowsBack = await withRetry(async () => {
+      const { data, error } = await db()
+        .from(table)
+        .upsert(chunk, { onConflict })
+        .select(columns)
+      if (error) throw new Error(`upsert ${table}: ${error.message}`)
+      return (data ?? []) as R[]
+    }, `upsert ${table}`)
+    out.push(...rowsBack)
   }
   return out
 }
 
 /** Chunked insert for append-only tables. */
+/**
+ * Chunked plain insert.
+ *
+ * Deliberately NOT retried, unlike the upserts above. A plain insert is not
+ * idempotent: a chunk that reached the database and then timed out on the way
+ * back would be written twice by a retry.
+ *
+ * Two of the three tables this writes could tolerate that — `variant_snapshots`
+ * is unique on (run_id, variant_id) and `product_review_snapshots` on
+ * (run_id, product_id), so a re-applied chunk would raise a duplicate-key error
+ * rather than duplicate data. `variant_events` has no such key, and silently
+ * doubling a price-change event is worse than failing a run: the change log is
+ * what the dashboard and any alerting read, and a duplicated 'discount_started'
+ * is indistinguishable from two real ones.
+ *
+ * If write timeouts start costing whole runs here, the fix is a natural key on
+ * variant_events, not a retry around an unguarded insert.
+ */
 export async function insertAll<T extends object>(
   table: string,
   rows: T[],

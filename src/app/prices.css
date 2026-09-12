@@ -124,10 +124,17 @@
 }
 
 /* One hue per brand, so a brand keeps its colour across the page. Assigned by
-   slug rather than by row index: sorting must not reshuffle the palette. */
+   slug rather than by row index: sorting must not reshuffle the palette.
+   Hues are spaced around the wheel at roughly even intervals so no two bars
+   read as the same colour at a glance; lightness and chroma stay level so no
+   brand looks more important than another. A slug with no rule here falls back
+   to the neutral fill on .range-fill rather than disappearing. */
 .range-joola { background: oklch(55% 0.13 250); }
 .range-selkirk { background: oklch(52% 0.12 160); }
 .range-crbn { background: oklch(56% 0.14 30); }
+.range-sixzero { background: oklch(54% 0.13 300); }
+.range-paddletek { background: oklch(53% 0.12 195); }
+.range-gamma { background: oklch(58% 0.13 95); }
 
 /* --- tier chips ---------------------------------------------------------- */
 .tier-mix {
