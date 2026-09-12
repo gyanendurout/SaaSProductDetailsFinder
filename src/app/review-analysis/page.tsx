@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { resolveBrand } from '../../lib/queries.js'
-import { loadReviewFacts } from '../../lib/review-analysis.js'
+import { loadCoverage, loadEnrichedFacts, loadReviewFacts } from '../../lib/review-analysis.js'
+import { CompetitivePanel, MomentumPanel, PerceptionPanel, QualityPanel } from './panels'
 import { ProductFilter } from '../../components/ProductFilter'
 import { Stars } from '../../components/Stars'
 import { SHAPES, formatShape, formatThickness, type Shape } from '../../lib/review-dimensions.js'
@@ -21,6 +22,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 interface SearchParams {
+  panel?: string
   brand?: string
   product?: string
   stars?: string
@@ -36,6 +38,19 @@ const STAR_FILTERS: Array<{ value: string; label: string; ratings: number[] }> =
   { value: 'low', label: '3 star & below', ratings: [1, 2, 3] },
 ]
 
+/**
+ * Panels rather than separate routes, so all five share one corpus load. A
+ * route per panel would re-read 20,771 rows on every tab change.
+ */
+const PANELS = [
+  { key: 'leaderboard', label: 'Leaderboard' },
+  { key: 'momentum', label: 'Momentum' },
+  { key: 'perception', label: 'Perception' },
+  { key: 'quality', label: 'Quality signals' },
+  { key: 'competitive', label: 'Competitive' },
+] as const
+type PanelKey = (typeof PANELS)[number]['key']
+
 export default async function ReviewAnalysisPage({
   searchParams,
 }: {
@@ -43,7 +58,11 @@ export default async function ReviewAnalysisPage({
 }) {
   const params = await searchParams
   const scope = await resolveBrand(params.brand)
-  const all = await loadReviewFacts()
+  // Named for the listings it describes, not `coverage` — that identifier is
+  // already the shape/thickness resolution rate imported from review-stats.
+  const [all, listingCoverage] = await Promise.all([loadReviewFacts(), loadCoverage()])
+  const panel: PanelKey =
+    (PANELS.find((p) => p.key === params.panel)?.key as PanelKey | undefined) ?? 'leaderboard'
 
   const filter = toFilter(params, scope?.slug)
   const facts = all.filter((f) => matchesFilter(f, filter))
@@ -52,6 +71,13 @@ export default async function ReviewAnalysisPage({
   // so choosing 16mm does not make every other thickness vanish from the row
   // and strand the reader with no way back.
   const inBrand = all.filter((f) => matchesFilter(f, { brandSlug: filter.brandSlug }))
+
+  // The prose tier is a second full read of the corpus, so it is fetched only
+  // when a panel that actually mines prose is open.
+  const needsProse = panel === 'perception' || panel === 'quality' || panel === 'competitive'
+  const enriched = needsProse
+    ? (await loadEnrichedFacts()).filter((f) => matchesFilter(f, filter))
+    : []
 
   const href = (overrides: Partial<SearchParams>) => buildHref(params, overrides)
   const boards = leaderboardsByBrand(facts)
@@ -70,6 +96,19 @@ export default async function ReviewAnalysisPage({
           by star rating, paddle shape and core thickness.
         </p>
       </div>
+
+      <nav className="panel-tabs" aria-label="Analysis panels">
+        {PANELS.map((p) => (
+          <Link
+            key={p.key}
+            className="panel-tab"
+            href={href({ panel: p.key === 'leaderboard' ? undefined : p.key })}
+            data-active={panel === p.key}
+          >
+            {p.label}
+          </Link>
+        ))}
+      </nav>
 
       <div className="filters">
         <FilterGroup label="Rating">
@@ -163,6 +202,18 @@ export default async function ReviewAnalysisPage({
         </div>
       ) : (
         <>
+          {panel !== 'leaderboard' ? (
+            panel === 'momentum' ? (
+              <MomentumPanel facts={facts} coverage={listingCoverage} />
+            ) : panel === 'perception' ? (
+              <PerceptionPanel facts={enriched} />
+            ) : panel === 'quality' ? (
+              <QualityPanel facts={enriched} />
+            ) : (
+              <CompetitivePanel facts={enriched} />
+            )
+          ) : (
+            <>
           <div className="section-head">
             <h2>Most-reviewed paddle by brand</h2>
           </div>
@@ -235,6 +286,8 @@ export default async function ReviewAnalysisPage({
               }
             />
           </div>
+            </>
+          )}
         </>
       )}
     </>

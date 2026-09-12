@@ -25,6 +25,8 @@ function fact(over: Partial<ReviewFact> = {}): ReviewFact {
     rating: 5,
     shape: null,
     thicknessMm: null,
+    submittedAt: null,
+    playStyle: null,
     ...over,
   }
 }

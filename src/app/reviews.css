@@ -704,3 +704,62 @@
   flex-direction: column;
   gap: var(--gap-tight);
 }
+
+/* --- review analysis panels ------------------------------------------------ */
+.panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  border-bottom: 1px solid var(--rule-strong);
+  margin-bottom: var(--gap);
+}
+.panel-tab {
+  padding: 0 0 var(--gap-tight);
+  font-size: var(--text-sm);
+  font-weight: 560;
+  color: var(--ink-muted);
+  /* The underline sits on the same pixel row as the container border, so the
+     active tab reads as joined to the panel below rather than floating. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.panel-tab:hover {
+  color: var(--ink);
+}
+.panel-tab[data-active='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+/* Sparklines inherit colour so they follow the theme without a second palette. */
+.spark {
+  display: block;
+  width: 100%;
+  min-width: 90px;
+  height: 20px;
+  color: var(--rule-strong);
+}
+.spark rect {
+  fill: currentColor;
+}
+.spark-line path {
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+td[data-tone='positive'],
+[data-tone='positive'] {
+  color: var(--positive);
+}
+td[data-tone='danger'],
+[data-tone='danger'] {
+  color: var(--danger);
+}
+
+.gap-list {
+  margin: var(--gap-tight) 0 0;
+  padding-left: 1.1rem;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}

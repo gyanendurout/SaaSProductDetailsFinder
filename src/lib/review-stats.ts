@@ -5,8 +5,16 @@
  * database. Loading lives in review-analysis.ts.
  */
 import { SHAPES, formatShape, formatThickness, type Shape } from './review-dimensions.js'
+import type { Perception } from './review-context.js'
 
-/** One review, reduced to only what the analysis page counts. */
+/**
+ * One review, reduced to what the counting panels need.
+ *
+ * Deliberately excludes everything mined from prose or from the platform's
+ * questionnaire. Those columns cost 53s to read against 6s for these, and the
+ * leaderboard and momentum panels never look at them — so they live on
+ * EnrichedFact and are fetched only when a panel that uses them is open.
+ */
 export interface ReviewFact {
   productId: string
   productTitle: string
@@ -17,6 +25,31 @@ export interface ReviewFact {
   rating: number | null
   shape: Shape | null
   thicknessMm: number | null
+  /** ISO timestamp. 100% populated across all six brands at time of writing. */
+  submittedAt: string | null
+  /** The brand's OWN merchandised play style, for comparison against buyers. */
+  playStyle: string | null
+}
+
+/**
+ * A review plus everything mined from its prose and its questionnaire answers.
+ *
+ * A separate type rather than optional fields on ReviewFact, so a panel that
+ * needs prose cannot be handed rows that never had it and quietly render zero.
+ */
+export interface EnrichedFact extends ReviewFact {
+  /** Defect codes named in the prose. Empty for ~99% of reviews. */
+  defects: string[]
+  /** Other paddle brands named. Excludes the brand being reviewed. */
+  mentions: string[]
+  /** Whether the prose reads as arriving from another paddle, not just naming one. */
+  readsAsSwitch: boolean
+  /** Where the buyer places it on power-to-control. Selkirk's form only. */
+  perception: Perception | null
+  /** Previous paddle was this same brand. Selkirk's form only. */
+  returningBuyer: boolean | null
+  /** How long they had owned it when writing. JOOLA's form only. */
+  ownership: string | null
 }
 
 export interface AnalysisFilter {

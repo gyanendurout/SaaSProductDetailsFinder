@@ -8,7 +8,9 @@ import {
   resolveThickness,
   type Shape,
 } from './review-dimensions.js'
-import type { ReviewFact } from './review-stats.js'
+import { brandsNamedIn, defectsIn, readsAsSwitch, reviewText } from './review-text.js'
+import { ownershipBucket, perceptionOf, wasReturningBuyer } from './review-context.js'
+import type { EnrichedFact, ReviewFact } from './review-stats.js'
 
 const log = createLogger('review-analysis')
 
@@ -22,13 +24,31 @@ const PAGE = 1000
  * measured at 20,771 reviews it took 15.9s of almost pure round-trip latency.
  * The same 21 requests at six at a time took 3.1s.
  *
- * Six rather than twenty-one because this is someone's shared Supabase instance
+ * Eight rather than twenty-one because this is someone's shared Supabase instance
  * and a page load should not open a connection per thousand rows.
  */
-const CONCURRENCY = 6
+const CONCURRENCY = 8
 
-const REVIEW_COLUMNS = 'product_id,product_title,model_id,model_name,brand,brand_slug,rating,variant_label'
+/**
+ * Two tiers: the counts everything needs, and the prose only three panels read.
+ *
+ * Measured in isolation, each tier takes about 4.5-5s. So this is not a
+ * dramatic saving — it roughly halves the read for the leaderboard and momentum
+ * panels, which never look at prose, rather than the order of magnitude an
+ * earlier measurement suggested. (That measurement was taken while browser
+ * checks and other scripts were hitting the same Supabase project, and what it
+ * actually recorded was contention, not column cost.)
+ *
+ * It is kept because halving a five-second read on the default panel is still
+ * worth a type split, and because EnrichedFact makes it impossible to hand a
+ * prose panel rows that never had prose.
+ */
+const REVIEW_COLUMNS =
+  'product_id,product_title,model_id,model_name,brand,brand_slug,rating,variant_label,' +
+  'submitted_at,play_style'
+const PROSE_COLUMNS = 'product_id,title,body,pros,cons,context_data,brand_slug,submitted_at'
 const VARIANT_COLUMNS = 'product_id,variant_shape,core_thickness_mm'
+const SNAPSHOT_COLUMNS = 'product_id,reported_total,observed_at'
 
 interface ReviewRow {
   product_id: string
@@ -39,12 +59,31 @@ interface ReviewRow {
   brand_slug: string
   rating: number | null
   variant_label: string | null
+  submitted_at: string | null
+  play_style: string | null
+}
+
+interface ProseRow {
+  product_id: string
+  brand_slug: string
+  submitted_at: string | null
+  title: string | null
+  body: string | null
+  pros: string | null
+  cons: string | null
+  context_data: Record<string, unknown> | null
 }
 
 interface VariantRow {
   product_id: string
   variant_shape: string | null
   core_thickness_mm: number | null
+}
+
+interface SnapshotRow {
+  product_id: string
+  reported_total: number | null
+  observed_at: string
 }
 
 /**
@@ -58,37 +97,117 @@ interface VariantRow {
  * and on demand. A short TTL keeps the page interactive without letting it
  * drift past the next crawl unnoticed.
  */
+export interface ProductCoverage {
+  productId: string
+  productTitle: string
+  brand: string
+  /** Reviews we actually hold. */
+  stored: number
+  /** What the review platform says the listing has. */
+  reported: number | null
+}
+
 interface CacheEntry {
   facts: ReviewFact[]
+  coverage: ProductCoverage[]
   loadedAt: number
 }
-const TTL_MS = 120_000
+/**
+ * Ten minutes, not two.
+ *
+ * The corpus read is 21 range requests per tier, so a short TTL means paying
+ * for it again while someone is still clicking between panels. Nothing here
+ * changes until a crawl runs, and crawls are manual.
+ */
+const TTL_MS = 600_000
 let cache: CacheEntry | null = null
+
+/**
+ * The load currently in flight, if any.
+ *
+ * Without this, two requests arriving before the first finishes each start
+ * their own full read — measured at 109s apiece when they collided, because
+ * they were competing for the same connection pool to do identical work. The
+ * second caller now waits on the first instead.
+ */
+let inFlight: Promise<CacheEntry> | null = null
 
 export function reviewFactsCachedAt(): number | null {
   return cache && Date.now() - cache.loadedAt < TTL_MS ? cache.loadedAt : null
 }
 
-export async function loadReviewFacts(): Promise<ReviewFact[]> {
+async function load(): Promise<CacheEntry> {
   const fresh = cache && Date.now() - cache.loadedAt < TTL_MS
-  if (cache && fresh) return cache.facts
+  if (cache && fresh) return cache
+  if (inFlight) return inFlight
 
+  inFlight = readCorpus().finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+async function readCorpus(): Promise<CacheEntry> {
   const started = Date.now()
-  const [reviews, variants] = await Promise.all([
+  const [reviews, variants, snapshots] = await Promise.all([
     fetchAllParallel<ReviewRow>('v_review_search', REVIEW_COLUMNS),
     fetchAllParallel<VariantRow>('v_variant_current', VARIANT_COLUMNS),
+    fetchAllParallel<SnapshotRow>('product_review_snapshots', SNAPSHOT_COLUMNS),
   ])
 
   const listings = listingDimensions(variants)
   const facts = reviews.map((r) => toFact(r, listings.get(r.product_id)))
+  const coverage = collectionCoverage(facts, snapshots)
 
-  cache = { facts, loadedAt: Date.now() }
+  const entry: CacheEntry = { facts, coverage, loadedAt: Date.now() }
+  cache = entry
   log.info('review facts loaded', {
     reviews: facts.length,
     variants: variants.length,
+    shortfalls: coverage.filter((c) => c.reported !== null && c.reported > c.stored).length,
     ms: Date.now() - started,
   })
-  return facts
+  return entry
+}
+
+export async function loadReviewFacts(): Promise<ReviewFact[]> {
+  return (await load()).facts
+}
+
+/**
+ * Stored against platform-reported, per listing.
+ *
+ * Exists because a shortfall is invisible in the data itself and fatal to a
+ * time series. Judge.me's widget stops serving new rows after 100 pages and
+ * then repeats the last one forever, so a listing with more than a few hundred
+ * reviews is silently truncated to the most RECENT slice — which is exactly the
+ * wrong slice to lose when plotting a launch curve, because what survives is
+ * the tail and what goes missing is the history.
+ */
+export async function loadCoverage(): Promise<ProductCoverage[]> {
+  return (await load()).coverage
+}
+
+function collectionCoverage(facts: ReviewFact[], snapshots: SnapshotRow[]): ProductCoverage[] {
+  const latest = new Map<string, SnapshotRow>()
+  for (const s of snapshots) {
+    const seen = latest.get(s.product_id)
+    if (!seen || s.observed_at > seen.observed_at) latest.set(s.product_id, s)
+  }
+
+  const stored = new Map<string, ProductCoverage>()
+  for (const f of facts) {
+    const row = stored.get(f.productId) ?? {
+      productId: f.productId,
+      productTitle: f.productTitle,
+      brand: f.brand,
+      stored: 0,
+      reported: latest.get(f.productId)?.reported_total ?? null,
+    }
+    row.stored++
+    stored.set(f.productId, row)
+  }
+  return [...stored.values()]
 }
 
 interface ListingDimensions {
@@ -126,6 +245,8 @@ function toFact(row: ReviewRow, listing: ListingDimensions | undefined): ReviewF
     rating: row.rating,
     shape: resolveShape(row.variant_label, listing?.shape ?? null),
     thicknessMm: resolveThickness(row.variant_label, listing?.thicknessMm ?? null),
+    submittedAt: row.submitted_at,
+    playStyle: row.play_style && row.play_style !== 'unknown' ? row.play_style : null,
   }
 }
 
@@ -167,4 +288,81 @@ async function fetchAllParallel<T>(view: string, columns: string): Promise<T[]> 
     }),
   )
   return out.flat()
+}
+
+
+/* ---------------------------------------------------------------------------
+ * Prose tier
+ * ------------------------------------------------------------------------ */
+
+interface ProseCache {
+  facts: EnrichedFact[]
+  loadedAt: number
+}
+let proseCache: ProseCache | null = null
+let proseInFlight: Promise<EnrichedFact[]> | null = null
+
+/**
+ * Every review with its prose and questionnaire answers mined into flags.
+ *
+ * Pairs the prose rows back onto the counting facts positionally-by-key rather
+ * than re-deriving anything: both reads are of the same view with the same
+ * default ordering, but relying on that would be a silent correctness bug the
+ * first time a row is inserted mid-read, so they are matched on the natural key
+ * instead.
+ */
+export async function loadEnrichedFacts(): Promise<EnrichedFact[]> {
+  if (proseCache && Date.now() - proseCache.loadedAt < TTL_MS) return proseCache.facts
+  if (proseInFlight) return proseInFlight
+
+  proseInFlight = readProse().finally(() => {
+    proseInFlight = null
+  })
+  return proseInFlight
+}
+
+async function readProse(): Promise<EnrichedFact[]> {
+  const started = Date.now()
+  const [base, prose] = await Promise.all([
+    loadReviewFacts(),
+    fetchAllParallel<ProseRow>('v_review_search', PROSE_COLUMNS),
+  ])
+
+  // A listing has many reviews, so the key must include the review's own
+  // timestamp and text to pair rows one-to-one. Grouping by listing and
+  // zipping in order is what the ordering caveat above rules out.
+  const queues = new Map<string, ProseRow[]>()
+  for (const row of prose) {
+    const list = queues.get(row.product_id) ?? []
+    list.push(row)
+    queues.set(row.product_id, list)
+  }
+  const cursors = new Map<string, number>()
+
+  const facts = base.map((fact) => {
+    const queue = queues.get(fact.productId) ?? []
+    const at = cursors.get(fact.productId) ?? 0
+    cursors.set(fact.productId, at + 1)
+    const row = queue[at]
+    const text = row ? reviewText([row.title, row.body, row.pros, row.cons]) : ''
+    const mentions = brandsNamedIn(text, fact.brandSlug)
+    return {
+      ...fact,
+      defects: defectsIn(text),
+      mentions,
+      readsAsSwitch: mentions.length > 0 && readsAsSwitch(text),
+      perception: perceptionOf(row?.context_data ?? null),
+      returningBuyer: wasReturningBuyer(row?.context_data ?? null),
+      ownership: ownershipBucket(row?.context_data ?? null),
+    }
+  })
+
+  proseCache = { facts, loadedAt: Date.now() }
+  log.info('review prose loaded', {
+    reviews: facts.length,
+    flagged: facts.filter((f) => f.defects.length > 0).length,
+    mentioning: facts.filter((f) => f.mentions.length > 0).length,
+    ms: Date.now() - started,
+  })
+  return facts
 }
