@@ -7,7 +7,7 @@ import {
   getPriceHistory,
   type VariantCurrent,
 } from '../../../lib/queries.js'
-import { Badge, StockBadge, TierBadge } from '../../../components/Badge'
+import { Badge, StockBadge, TierBadge, VocabBadge } from '../../../components/Badge'
 import { PriceChart } from '../../../components/PriceChart'
 import { fmtMoney, fmtWhen } from '../../../lib/format.js'
 
@@ -198,7 +198,7 @@ export default async function ModelPage({ params }: { params: Promise<{ id: stri
                 <dt>Play style</dt>
                 <dd>
                   {model.play_style && model.play_style !== 'unknown' ? (
-                    <Badge tone="neutral">{model.play_style}</Badge>
+                    <VocabBadge code={model.play_style} />
                   ) : (
                     <span className="faint">not merchandised by this brand</span>
                   )}
@@ -212,7 +212,7 @@ export default async function ModelPage({ params }: { params: Promise<{ id: stri
                 <dt>Shape</dt>
                 <dd className="chips">
                   {(model.shapes ?? []).length > 0 ? (
-                    (model.shapes ?? []).map((sh) => <Badge key={sh}>{sh}</Badge>)
+                    (model.shapes ?? []).map((sh) => <VocabBadge key={sh} code={sh} />)
                   ) : (
                     <span className="faint">—</span>
                   )}

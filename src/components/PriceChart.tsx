@@ -122,11 +122,16 @@ export function PriceChart({
             stroke={oos ? 'var(--ink-faint)' : 'none'}
             strokeWidth="1.5"
           >
-            <title>
-              {point.day} — {fmtMoney(point.price_close, currency)}
-              {onSale ? ` (${point.discount_pct_close}% off)` : ''}
-              {oos ? ' — out of stock' : ''}
-            </title>
+            {/* One string, not four children.
+                An SVG <title> is parsed as text, so the browser collapses the
+                separate text nodes React emitted into a single one. Hydration
+                then found one child where it had rendered four and threw the
+                whole subtree away with "server rendered HTML didn't match".
+                Joining here means the server and the browser see the same
+                single node. */}
+            <title>{`${point.day} — ${fmtMoney(point.price_close, currency)}${
+              onSale ? ` (${point.discount_pct_close}% off)` : ''
+            }${oos ? ' — out of stock' : ''}`}</title>
           </circle>
         )
       })}
