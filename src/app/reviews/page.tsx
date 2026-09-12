@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ReviewCard } from '../../components/ReviewCard'
 import { ProductFilter } from '../../components/ProductFilter'
+import { Pager } from '../../components/Pager'
 import { resolveBrand } from '../../lib/queries.js'
 import { RatingHistogram, Stars } from '../../components/Stars'
 import {
@@ -10,6 +11,7 @@ import {
   type ReviewQuery,
   type ReviewSort,
 } from '../../lib/review-queries.js'
+import { clampPageSize, lastPageOf } from '../../lib/pagination.js'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +29,7 @@ interface SearchParams {
   to?: string
   sort?: string
   page?: string
+  size?: string
 }
 
 const SORTS: Array<{ value: ReviewSort; label: string }> = [
@@ -56,7 +59,7 @@ export default async function ReviewsPage({
     getReviewedProducts(query.brand),
   ])
 
-  const lastPage = Math.max(1, Math.ceil(page.total / page.pageSize))
+  const lastPage = lastPageOf(page.total, page.pageSize)
   const href = (overrides: Partial<SearchParams>) => buildHref(params, overrides)
 
   return (
@@ -227,28 +230,8 @@ export default async function ReviewsPage({
         </div>
       )}
 
-      {lastPage > 1 && (
-        <nav className="pager" aria-label="Review pages">
-          <Link
-            className="btn"
-            href={href({ page: String(Math.max(1, page.page - 1)) })}
-            aria-disabled={page.page === 1}
-            data-disabled={page.page === 1}
-          >
-            ← Previous
-          </Link>
-          <span className="muted">
-            Page {page.page.toLocaleString()} of {lastPage.toLocaleString()}
-          </span>
-          <Link
-            className="btn"
-            href={href({ page: String(Math.min(lastPage, page.page + 1)) })}
-            aria-disabled={page.page === lastPage}
-            data-disabled={page.page === lastPage}
-          >
-            Next →
-          </Link>
-        </nav>
+      {page.rows.length > 0 && (
+        <Pager page={page.page} lastPage={lastPage} pageSize={page.pageSize} />
       )}
     </>
   )
@@ -273,6 +256,7 @@ function toQuery(params: SearchParams, brandSlug?: string): ReviewQuery {
     to: params.to,
     sort: (SORTS.find((s) => s.value === params.sort)?.value ?? 'newest') as ReviewSort,
     page: Math.max(1, Number(params.page) || 1),
+    pageSize: clampPageSize(params.size),
   }
 }
 

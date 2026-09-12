@@ -540,8 +540,17 @@ tbody tr[data-scoped='true'] .b-accent {
 .review-prod { font-size: var(--text-xs); color: var(--ink-faint); margin-top: 0.35rem; }
 .review-tags { display: flex; gap: var(--gap-hair); flex-wrap: wrap; margin-top: 0.35rem; }
 
-.pager { display: flex; align-items: center; gap: var(--gap-tight); margin-top: var(--gap); flex-wrap: wrap; }
+.pager { display: flex; flex-direction: column; align-items: center; gap: var(--gap); margin-top: var(--gap); padding-top: var(--gap); border-top: 1px solid var(--rule); }
 .pager .status { font-size: var(--text-sm); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.pager-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.25rem; }
+.pager-page, .pager-step { min-width: 2.25rem; text-align: center; font-variant-numeric: tabular-nums; }
+.pager-step { font-size: 1rem; line-height: 1.1; }
+.pager-gap { padding: 0 0.25rem; color: var(--ink-faint); user-select: none; }
+.pager-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--gap) var(--gap-loose); font-size: var(--text-sm); color: var(--ink-muted); }
+.pager-size, .pager-jump { display: flex; align-items: center; gap: var(--gap-tight); }
+.pager-size select, .pager-jump input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0.35rem 0.5rem; }
+.pager-size select:hover, .pager-jump input:hover { border-color: var(--rule-strong); }
+.pager-jump input { width: 5.5rem; font-variant-numeric: tabular-nums; }
 
 .empty {
   border: 1px dashed var(--rule-strong);
@@ -627,7 +636,10 @@ const VIEWS = [
   { key: 'pipeline', label: 'Pipeline' }
 ]
 
-const PAGE = 40
+/* Mirrors REVIEW_PAGE_SIZES in src/lib/pagination.ts. The snapshot is meant to
+   behave like the site it is a copy of, so the same three sizes are offered
+   and the same default applies. */
+const PAGE_SIZES = [20, 50, 100]
 
 const state = {
   view: 'overview',
@@ -644,7 +656,73 @@ const state = {
   reviewOnly: null,
   reviewProduct: null,
   reviewSort: 'newest',
-  reviewPage: 0
+  reviewPage: 0,
+  reviewSize: 20
+}
+
+/* --- review pager ---------------------------------------------------------
+ *
+ * Pages are 0-based here (the live site's URL is 1-based); everything shown to
+ * a reader is +1. The window logic matches pageWindow() in
+ * src/lib/pagination.ts: first and last always reachable, a window around the
+ * current page, an ellipsis for the runs between, and never an ellipsis hiding
+ * a single page.
+ * ------------------------------------------------------------------------ */
+function pageWindow(current, last, span) {
+  span = span === undefined ? 2 : span
+  const wanted = {}
+  wanted[0] = true
+  wanted[last - 1] = true
+  for (let p = current - span; p <= current + span; p++) {
+    if (p >= 0 && p < last) wanted[p] = true
+  }
+  const sortedPages = Object.keys(wanted).map(Number).sort(function (a, b) { return a - b })
+  const out = []
+  let prev = -1
+  sortedPages.forEach(function (p) {
+    if (prev >= 0 && p - prev === 2) out.push(prev + 1)
+    else if (prev >= 0 && p - prev > 2) out.push('gap')
+    out.push(p)
+    prev = p
+  })
+  return out
+}
+
+function pagerHtml(page, pages, size, total) {
+  const numbers = pages < 2 ? '' :
+    '<div class="pager-pages">' +
+    '<button class="pill pager-step" data-page="' + (page - 1) + '"' +
+      (page === 0 ? ' disabled' : '') + ' aria-label="Previous page">←</button>' +
+    pageWindow(page, pages).map(function (t) {
+      if (t === 'gap') return '<span class="pager-gap" aria-hidden="true">…</span>'
+      return '<button class="pill pager-page" data-page="' + t + '"' +
+        (t === page ? ' data-active="true" aria-current="page"' : '') +
+        ' aria-label="Page ' + (t + 1) + '">' + num(t + 1) + '</button>'
+    }).join('') +
+    '<button class="pill pager-step" data-page="' + (page + 1) + '"' +
+      (page >= pages - 1 ? ' disabled' : '') + ' aria-label="Next page">→</button>' +
+    '</div>'
+
+  const jump = pages < 2 ? '' :
+    '<span class="pager-jump">' +
+    '<label for="rev-jump">Go to page</label>' +
+    '<input id="rev-jump" type="number" min="1" max="' + pages + '" placeholder="' + (page + 1) + '">' +
+    '<span class="faint">of ' + num(pages) + '</span>' +
+    '<button class="pill" id="rev-jump-go">Go</button>' +
+    '</span>'
+
+  return '<div class="pager">' + numbers +
+    '<div class="pager-tools">' +
+    '<span class="pager-size"><label for="rev-size">Rows per page</label>' +
+    '<select id="rev-size">' +
+    PAGE_SIZES.map(function (n) {
+      return '<option value="' + n + '"' + (n === size ? ' selected' : '') + '>' + n + '</option>'
+    }).join('') +
+    '</select></span>' +
+    '<span class="status">' + num(page * size + 1) + '–' + num(Math.min((page + 1) * size, total)) +
+    ' of ' + num(total) + '</span>' +
+    jump +
+    '</div></div>'
 }
 
 /* --- formatting ----------------------------------------------------------- */
@@ -1037,9 +1115,10 @@ function viewReviews() {
     return state.reviewSort === 'oldest' ? ta.localeCompare(tb) : tb.localeCompare(ta)
   })
 
-  const pages = Math.max(1, Math.ceil(sorted.length / PAGE))
+  const size = state.reviewSize
+  const pages = Math.max(1, Math.ceil(sorted.length / size))
   const page = Math.min(state.reviewPage, pages - 1)
-  const slice = sorted.slice(page * PAGE, page * PAGE + PAGE)
+  const slice = sorted.slice(page * size, page * size + size)
 
   const cards = slice.map(function (r) {
     const rating = r[F.rating]
@@ -1149,12 +1228,7 @@ function viewReviews() {
     (rows.length === 0
       ? '<div class="empty">No review matches those filters.</div>'
       : '<div class="reviews">' + cards + '</div>' +
-        '<div class="pager">' +
-        '<button class="pill" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>' +
-        '<span class="status">' + num(page * PAGE + 1) + '–' + num(Math.min((page + 1) * PAGE, sorted.length)) +
-        ' of ' + num(sorted.length) + '</span>' +
-        '<button class="pill" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>' +
-        '</div>') +
+        pagerHtml(page, pages, size, sorted.length)) +
 
     '<p class="note">A syndicated review attaches to exactly one listing, even where the same paddle sells ' +
     'under several. That is why this product list (' + products.length + ') is shorter than the catalogue: ' +
@@ -1319,11 +1393,44 @@ document.addEventListener('click', function (e) {
     render()
     return
   }
+  if (el.id === 'rev-jump-go') { jumpToTypedPage(); return }
   if (el.dataset.page !== undefined) {
     state.reviewPage = Number(el.dataset.page)
     render()
     window.scrollTo(0, 0)
   }
+})
+
+/* The jump box is not inside a <form>, so Enter would otherwise do nothing —
+   and a number field that ignores Enter reads as broken. */
+document.addEventListener('keydown', function (e) {
+  if (e.target && e.target.id === 'rev-jump' && e.key === 'Enter') {
+    e.preventDefault()
+    jumpToTypedPage()
+  }
+})
+
+function jumpToTypedPage() {
+  const box = document.getElementById('rev-jump')
+  if (!box) return
+  const wanted = Number(box.value)
+  const last = Number(box.max)
+  if (!isFinite(wanted) || wanted < 1 || wanted > last) return
+  state.reviewPage = wanted - 1
+  render()
+  window.scrollTo(0, 0)
+}
+
+document.addEventListener('change', function (e) {
+  if (!e.target || e.target.id !== 'rev-size') return
+  const next = Number(e.target.value)
+  if (PAGE_SIZES.indexOf(next) === -1) return
+  /* Keep the first row currently on screen on screen, rather than dropping the
+     reader back to page 1 for asking to see more at once. */
+  const firstRow = state.reviewPage * state.reviewSize
+  state.reviewSize = next
+  state.reviewPage = Math.floor(firstRow / next)
+  render()
 })
 
 /* Re-rendering the pane on every keystroke would drop focus, so the search

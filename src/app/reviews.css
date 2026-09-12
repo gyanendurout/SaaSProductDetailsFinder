@@ -310,17 +310,103 @@
   font-size: var(--text-xs);
 }
 
-/* --- pager ----------------------------------------------------------------- */
+/* --- pager -----------------------------------------------------------------
+ *
+ * Two rows: the page numbers, then the rows-per-page and jump-to-page controls.
+ * They stay separate because the numbers wrap on a narrow screen and the
+ * controls must not be pushed off the end when they do.
+ * ------------------------------------------------------------------------- */
 .pager {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: var(--gap);
   margin-top: var(--gap-loose);
+  padding-top: var(--gap);
+  border-top: 1px solid var(--rule);
 }
 .pager [data-disabled='true'] {
   opacity: 0.4;
   pointer-events: none;
+}
+
+.pager-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-hair);
+}
+
+/* Page numbers are .pill, so they inherit the active treatment the filter
+   chips use. A fixed min-width keeps the row from shifting as the digit count
+   changes between page 9 and page 1039. */
+.pager-page,
+.pager-step {
+  min-width: 2.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pager-step {
+  font-size: 1rem;
+  line-height: 1.1;
+}
+.pager-gap {
+  padding: 0 var(--gap-hair);
+  color: var(--ink-faint);
+  user-select: none;
+}
+
+.pager-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap) var(--gap-loose);
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.pager-size,
+.pager-jump {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-tight);
+}
+.pager-size select,
+.pager-jump input {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+}
+.pager-size select:hover,
+.pager-jump input:hover {
+  border-color: var(--rule-strong);
+}
+.pager-jump input {
+  width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Out-of-range is signalled on the border rather than by blocking the
+   keystroke: refusing input mid-type makes a field feel broken. The Go button
+   is what actually stays disabled. */
+.pager-jump input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.pager-jump .btn {
+  padding: 0.35rem 0.8rem;
+}
+
+@media (max-width: 640px) {
+  /* At this width the jump box is the only way to move a long distance, so the
+     numbers give up their space first. */
+  .pager-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -482,4 +568,139 @@
 .empty-inline {
   margin: 0.75rem 0 0;
   font-size: var(--text-sm, 0.875rem);
+}
+
+/* ---------------------------------------------------------------------------
+ * Review analysis (src/app/review-analysis)
+ *
+ * Brand boards and the two breakdown tables. Shares .card, .stats, .pill and
+ * the table rules from globals.css; only what is genuinely new lives here.
+ * ------------------------------------------------------------------------- */
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap);
+  margin-bottom: var(--gap-section);
+}
+
+.board-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-tight);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: var(--gap-tight);
+  margin-bottom: var(--gap-tight);
+}
+.board-head h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 400;
+  margin: 0;
+}
+.board-foot {
+  margin: var(--gap-tight) 0 0;
+  font-size: var(--text-xs);
+}
+
+/* The ranked list.
+ *
+ * Two rows per entry rather than a table: the name and bar carry the ranking,
+ * and the star split sits under them as supporting detail. A six-column table
+ * at this width would truncate every paddle name, which is the one piece of
+ * information the panel exists to show. */
+.rank {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight);
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name  count'
+    'bar   bar'
+    'meta  meta';
+  gap: 0.15rem var(--gap-tight);
+  align-items: baseline;
+}
+.rank-name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rank-name:hover {
+  text-decoration: underline;
+}
+.rank-count {
+  grid-area: count;
+  font-variant-numeric: tabular-nums;
+  font-weight: 560;
+}
+.rank-meta {
+  grid-area: meta;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.rank-bar {
+  grid-area: bar;
+  height: 4px;
+  border-radius: 100px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.rank-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--rule-strong);
+}
+/* The leader is the answer to the question the page asks, so it is the one
+   row that gets weight and colour; everything else is context for it. */
+.rank-row[data-leader='true'] .rank-name,
+.rank-row[data-leader='true'] .rank-count {
+  font-weight: 640;
+}
+.rank-row[data-leader='true'] .rank-bar span {
+  background: var(--accent);
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap-section);
+}
+
+/* 'Not recorded' is a real answer here, not an error, so it is set back rather
+   than flagged — visible and countable without competing with the data. */
+.split-grid tr[data-muted='true'] th,
+.split-grid tr[data-muted='true'] td {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+.split-grid tr[data-active='true'] th,
+.split-grid tr[data-active='true'] td {
+  background: var(--surface-sunken);
+  font-weight: 560;
+}
+
+.analysis-note {
+  margin: var(--gap) 0 0;
+  padding-top: var(--gap-tight);
+  border-top: 1px solid var(--rule);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.skeleton-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight);
 }
