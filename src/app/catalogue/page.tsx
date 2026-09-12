@@ -1,11 +1,18 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { getModels, type ModelOverview,
   resolveBrand,
 } from '../../lib/queries.js'
-import { Badge, TierBadge } from '../../components/Badge'
-import { fmtMoney } from '../../lib/format.js'
+import { Badge, TierBadge, VocabBadge } from '../../components/Badge'
+import { fmtMoney, vocabLabel } from '../../lib/format.js'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Catalogue',
+  description:
+    'Every tracked paddle model, reconciled across storefronts that model the same hierarchy differently.',
+}
 
 interface SearchParams {
   brand?: string
@@ -29,6 +36,13 @@ export default async function CataloguePage({
   const lines = unique(all.map((m) => m.product_line).filter(Boolean) as string[]).sort()
   const styles = unique(all.map((m) => m.play_style).filter((s) => s && s !== 'unknown'))
 
+  // A filter whose value no longer appears in the data must still be shown.
+  // Switching brand keeps ?style=, and a brand that publishes no play styles
+  // used to hide the whole row while the filter went on excluding every model:
+  // an empty table, no visible cause, and nothing to click to undo it.
+  const withActive = (values: string[], active?: string) =>
+    active && !values.includes(active) ? [...values, active] : values
+
   const models = all.filter(
     (m) =>
       (!params.tier || m.skill_tier === params.tier) &&
@@ -39,6 +53,10 @@ export default async function CataloguePage({
 
   const skus = models.reduce((n, m) => n + m.sku_count, 0)
   const multiBrand = !params.brand
+
+  const activeFilters = (['tier', 'style', 'generation', 'line'] as const)
+    .map((key) => [key, params[key]] as const)
+    .filter((entry): entry is readonly [typeof entry[0], string] => Boolean(entry[1]))
 
   return (
     <>
@@ -55,20 +73,20 @@ export default async function CataloguePage({
 
       <div className="filters">
         <FilterGroup label="Tier" param="tier" values={tiers} active={params.tier} current={params} />
-        {styles.length > 0 && (
+        {withActive(styles, params.style).length > 0 && (
           <FilterGroup
             label="Play style"
             param="style"
-            values={styles}
+            values={withActive(styles, params.style)}
             active={params.style}
             current={params}
           />
         )}
-        {generations.length > 0 && (
+        {withActive(generations, params.generation).length > 0 && (
           <FilterGroup
             label="Generation"
             param="generation"
-            values={generations}
+            values={withActive(generations, params.generation)}
             active={params.generation}
             current={params}
           />
@@ -81,9 +99,31 @@ export default async function CataloguePage({
       </p>
 
       {models.length === 0 ? (
-        <div className="empty">No models match those filters.</div>
+        <div className="empty">
+          <p style={{ marginTop: 0 }}>
+            <strong>No models match those filters.</strong>
+          </p>
+          <p>
+            Active:{' '}
+            {activeFilters.map(([key, value], i) => (
+              <span key={key}>
+                {i > 0 && ', '}
+                {FILTER_LABELS[key]} <strong>{vocabLabel(value)}</strong>
+              </span>
+            ))}
+            {activeFilters.length === 0 && 'nothing but the brand scope'}
+            {brand ? `, within ${brand.name}` : ''}.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            <Link href={brand ? `/catalogue?brand=${brand.slug}` : '/catalogue'}>
+              Clear every filter
+            </Link>
+            {' — '}a value can survive a brand change and exclude everything the new
+            brand sells.
+          </p>
+        </div>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" role="region" aria-label="Models">
           <table>
             <thead>
               <tr>
@@ -119,7 +159,7 @@ export default async function CataloguePage({
                   {styles.length > 0 && (
                     <td>
                       {m.play_style && m.play_style !== 'unknown' ? (
-                        <Badge tone="neutral">{m.play_style}</Badge>
+                        <VocabBadge code={m.play_style} />
                       ) : (
                         <span className="faint">—</span>
                       )}
@@ -147,7 +187,7 @@ export default async function CataloguePage({
                       </span>
                     )}
                   </td>
-                  <td className="muted">{listOrDash(m.shapes, 2)}</td>
+                  <td className="muted">{listOrDash(m.shapes?.map(vocabLabel) ?? null, 2)}</td>
                   <td className="muted">{listOrDash(m.colorways, 3)}</td>
                   <td className="num">
                     {priceRange(m)}
@@ -199,12 +239,18 @@ function FilterGroup({
   return (
     <div className="filter-group">
       <span>{label}</span>
-      <Link className="pill" href={href(undefined)} data-active={!active}>
+      <Link className="pill" href={href(undefined)} data-active={!active} aria-pressed={!active}>
         All
       </Link>
       {values.map((v) => (
-        <Link key={v} className="pill" href={href(v)} data-active={active === v}>
-          {v}
+        <Link
+          key={v}
+          className="pill"
+          href={href(v)}
+          data-active={active === v}
+          aria-pressed={active === v}
+        >
+          {vocabLabel(v)}
         </Link>
       ))}
     </div>
@@ -225,4 +271,11 @@ function priceRange(m: ModelOverview): string {
   const lo = fmtMoney(m.price_min, m.currency)
   if (m.price_min === m.price_max) return lo
   return `${lo}–${fmtMoney(m.price_max, m.currency, 0)}`
+}
+
+const FILTER_LABELS: Record<string, string> = {
+  tier: 'tier',
+  style: 'play style',
+  generation: 'generation',
+  line: 'line',
 }

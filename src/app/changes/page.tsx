@@ -1,24 +1,49 @@
-import { getChanges,
-  resolveBrand,
-} from '../../lib/queries.js'
+import type { Metadata } from 'next'
+import { getChangePage, getChangeTypeCounts, resolveBrand } from '../../lib/queries.js'
 import { Badge } from '../../components/Badge'
-import { eventLabel, eventTone, fmtWhen } from '../../lib/format.js'
+import { Pager } from '../../components/Pager'
+import { clampPageSize, lastPageOf } from '../../lib/pagination.js'
+import { changeValue, eventLabel, eventTone } from '../../lib/format.js'
+import { When } from '../../components/When'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Changes',
+  description:
+    'Price moves, promotions, stockouts and range changes, derived by comparing each crawl against the previous one.',
+}
+
+interface SearchParams {
+  brand?: string
+  page?: string
+  size?: string
+}
 
 export default async function ChangesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brand?: string }>
+  searchParams: Promise<SearchParams>
 }) {
-  const { brand } = await searchParams
-  const scope = await resolveBrand(brand)
-  const changes = await getChanges(250, scope?.slug)
+  const params = await searchParams
+  const scope = await resolveBrand(params.brand)
 
-  const byType = changes.reduce<Record<string, number>>((acc, c) => {
-    acc[c.event_type] = (acc[c.event_type] ?? 0) + 1
-    return acc
-  }, {})
+  // The chips are counted over the whole log, the table over one page of it.
+  // They used to come from the same 250-row read, which made every chip a
+  // statement about the page size: "sale started · 31" meant 31 of the 250 rows
+  // that happened to be loaded, not 31 events in the catalogue.
+  const [changes, byType] = await Promise.all([
+    getChangePage(
+      Math.max(1, Math.floor(Number(params.page)) || 1),
+      clampPageSize(params.size),
+      scope?.slug,
+    ),
+    getChangeTypeCounts(scope?.slug),
+  ])
+
+  const lastPage = lastPageOf(changes.total, changes.pageSize)
+  const first = (changes.page - 1) * changes.pageSize + 1
+  const last = Math.min(changes.page * changes.pageSize, changes.total)
 
   return (
     <>
@@ -32,7 +57,7 @@ export default async function ChangesPage({
         </p>
       </div>
 
-      {changes.length === 0 ? (
+      {changes.total === 0 ? (
         <div className="empty">
           <p style={{ marginTop: 0 }}>
             <strong>No changes recorded yet.</strong>
@@ -44,17 +69,22 @@ export default async function ChangesPage({
         </div>
       ) : (
         <>
-          <div className="chips" style={{ marginBottom: 'var(--gap-loose)' }}>
-            {Object.entries(byType)
-              .sort((a, b) => b[1] - a[1])
-              .map(([type, count]) => (
-                <Badge key={type} tone={eventTone(type)}>
-                  {eventLabel(type)} · {count}
-                </Badge>
-              ))}
+          <div className="chips" style={{ marginBottom: 'var(--gap-tight)' }}>
+            {byType.map(({ type, count }) => (
+              <Badge key={type} tone={eventTone(type)}>
+                {eventLabel(type)} · {count.toLocaleString()}
+              </Badge>
+            ))}
           </div>
 
-          <div className="table-wrap">
+          <p className="muted review-count-line">
+            Showing {first.toLocaleString()}–{last.toLocaleString()} of{' '}
+            {changes.total.toLocaleString()} events
+            {scope ? ` for ${scope.name}` : ''}. Counts above are for the whole log, not
+            this page.
+          </p>
+
+          <div className="table-wrap" role="region" aria-label="Change log">
             <table>
               <thead>
                 <tr>
@@ -68,9 +98,11 @@ export default async function ChangesPage({
                 </tr>
               </thead>
               <tbody>
-                {changes.map((c) => (
+                {changes.rows.map((c) => (
                   <tr key={c.id}>
-                    <td className="faint">{fmtWhen(c.occurred_at)}</td>
+                    <td className="faint">
+                      <When iso={c.occurred_at} />
+                    </td>
                     <td>
                       <Badge tone={eventTone(c.event_type)}>{eventLabel(c.event_type)}</Badge>
                     </td>
@@ -93,8 +125,8 @@ export default async function ChangesPage({
                         .filter(Boolean)
                         .join(' · ') || '—'}
                     </td>
-                    <td className="num faint">{c.old_value ?? '—'}</td>
-                    <td className="num">{c.new_value ?? '—'}</td>
+                    <td className="num faint">{changeValue(c.event_type, c.old_value)}</td>
+                    <td className="num">{changeValue(c.event_type, c.new_value)}</td>
                     <td className="num">
                       {c.delta_pct !== null ? (
                         <span
@@ -115,6 +147,10 @@ export default async function ChangesPage({
               </tbody>
             </table>
           </div>
+
+          {changes.rows.length > 0 && (
+            <Pager page={changes.page} lastPage={lastPage} pageSize={changes.pageSize} />
+          )}
         </>
       )}
     </>

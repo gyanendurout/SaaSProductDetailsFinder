@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ReviewCard } from '../../components/ReviewCard'
 import { ProductFilter } from '../../components/ProductFilter'
@@ -5,18 +6,27 @@ import { Pager } from '../../components/Pager'
 import { resolveBrand } from '../../lib/queries.js'
 import { RatingHistogram, Stars } from '../../components/Stars'
 import {
+  getFacetCounts,
   getReviewFacets,
   getReviewedProducts,
   searchReviews,
+  type FacetCounts,
   type ReviewFacets,
   type ReviewPage,
   type ReviewQuery,
   type ReviewSort,
 } from '../../lib/review-queries.js'
-import { DEFAULT_REVIEW_PAGE_SIZE, clampPageSize, lastPageOf } from '../../lib/pagination.js'
+import { DEFAULT_REVIEW_PAGE_SIZE, lastPageOf } from '../../lib/pagination.js'
+import { REVIEW_SORTS, parseReviewFilter } from '../../lib/review-facets.js'
 import { createLogger } from '../../lib/logger.js'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Reviews',
+  description:
+    'Every review each storefront publishes, reconciled across Bazaarvoice, Okendo, Judge.me and Yotpo so a complaint can be compared with a complaint.',
+}
 
 const log = createLogger('reviews-page')
 
@@ -54,14 +64,6 @@ interface SearchParams {
   size?: string
 }
 
-const SORTS: Array<{ value: ReviewSort; label: string }> = [
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
-  { value: 'rating_desc', label: 'Highest rated' },
-  { value: 'rating_asc', label: 'Lowest rated' },
-  { value: 'helpful', label: 'Most helpful' },
-]
-
 export default async function ReviewsPage({
   searchParams,
 }: {
@@ -71,7 +73,9 @@ export default async function ReviewsPage({
   // ?brand= is canonically a slug, but links shared before that change carry
   // the display name; resolving here keeps them working.
   const scope = await resolveBrand(params.brand)
-  const query = toQuery(params, scope?.slug)
+  // Parsed by the same function the rail's count endpoint uses, so the two
+  // can never disagree about what the URL asked for.
+  const query: ReviewQuery = parseReviewFilter(params, scope?.slug)
 
   // Facets and brand chips do not depend on the page, so they are issued
   // alongside the page query rather than after it.
@@ -88,11 +92,15 @@ export default async function ReviewsPage({
   let page = EMPTY_PAGE
   let facets = EMPTY_FACETS
   let products: Awaited<ReturnType<typeof getReviewedProducts>> = []
+  let counts: FacetCounts | null = null
   try {
-    ;[page, facets, products] = await Promise.all([
+    ;[page, facets, products, counts] = await Promise.all([
       searchReviews(query),
       getReviewFacets(query),
       getReviewedProducts(query.brand),
+      // Null when brand and product are the only filters — the pre-aggregated
+      // counts are exactly right then, and this read is worth several seconds.
+      getFacetCounts(query),
     ])
   } catch (error) {
     failure = classifyFailure(error)
@@ -105,6 +113,24 @@ export default async function ReviewsPage({
 
   const lastPage = lastPageOf(page.total, page.pageSize)
   const href = (overrides: Partial<SearchParams>) => buildHref(params, overrides)
+
+  // Under a narrowing filter the product chips carry the count that filter
+  // produces, and a product with nothing left in it drops out of the list
+  // rather than sitting there advertising a click that leads nowhere. The
+  // currently selected product stays visible either way, so there is always a
+  // way to read and clear it.
+  const productOptions = (counts
+    ? products
+        .map((p) => ({ ...p, review_count: counts.byProduct.get(p.product_id) ?? 0 }))
+        .filter((p) => p.review_count > 0 || p.product_id === params.product)
+        .sort((a, b) => (b.review_count ?? 0) - (a.review_count ?? 0))
+    : products
+  ).map((p) => ({
+    id: p.product_id,
+    title: p.product_title,
+    count: p.review_count ?? 0,
+    href: href({ product: p.product_id, page: undefined }),
+  }))
 
   return (
     <>
@@ -126,7 +152,7 @@ export default async function ReviewsPage({
         <input
           type="search"
           name="q"
-          defaultValue={params.q ?? ''}
+          defaultValue={query.q ?? ''}
           placeholder="Search reviews — a word, a phrase, a reviewer, a fault…"
           aria-label="Search reviews"
         />
@@ -176,7 +202,7 @@ export default async function ReviewsPage({
         <FilterGroup label="Sentiment">
           <Chip
             href={href({ sentiment: undefined, rating: undefined, page: undefined })}
-            active={!params.sentiment && !params.rating}
+            active={!params.sentiment && !query.rating}
           >
             All
           </Chip>
@@ -192,6 +218,15 @@ export default async function ReviewsPage({
           >
             Complaints (1–3)
           </Chip>
+          {/* Picking a bar in the histogram is a filter like any other, but it
+              lives in a different control, so this row used to show nothing
+              selected while one star was in force — three chips, none active,
+              and no visible way to clear it. */}
+          {query.rating !== undefined && (
+            <Chip href={href({ rating: undefined, page: undefined })} active>
+              {query.rating} star only ✕
+            </Chip>
+          )}
         </FilterGroup>
 
         <FilterGroup label="Only">
@@ -213,7 +248,7 @@ export default async function ReviewsPage({
         </FilterGroup>
 
         <FilterGroup label="Sort">
-          {SORTS.map((s) => (
+          {REVIEW_SORTS.map((s) => (
             <Chip
               key={s.value}
               href={href({ sort: s.value, page: undefined })}
@@ -225,15 +260,11 @@ export default async function ReviewsPage({
         </FilterGroup>
       </div>
 
-      {products.length > 0 && (
+      {productOptions.length > 0 && (
         <ProductFilter
-          products={products.map((p) => ({
-            id: p.product_id,
-            title: p.product_title,
-            count: p.review_count ?? 0,
-            href: href({ product: p.product_id, page: undefined }),
-          }))}
+          products={productOptions}
           allHref={href({ product: undefined, page: undefined })}
+          scoped={counts !== null}
           {...(params.product ? { activeId: params.product } : {})}
         />
       )}
@@ -328,31 +359,6 @@ function describeError(error: unknown): string {
     return JSON.stringify(error) || String(error)
   } catch {
     return String(error)
-  }
-}
-
-function toQuery(params: SearchParams, brandSlug?: string): ReviewQuery {
-  const rating = Number(params.rating)
-  return {
-    q: params.q,
-    brand: brandSlug,
-    productId: params.product,
-    modelId: params.model,
-    rating: Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
-    sentiment:
-      params.sentiment === 'positive' || params.sentiment === 'negative'
-        ? params.sentiment
-        : undefined,
-    verifiedOnly: params.verified === '1',
-    withTextOnly: params.text === '1',
-    withResponse: params.replied === '1',
-    from: params.from,
-    to: params.to,
-    sort: (SORTS.find((s) => s.value === params.sort)?.value ?? 'newest') as ReviewSort,
-    // Floored as well as clamped: '2.7' otherwise produced an offset that
-    // straddled two pages and repeated rows across them.
-    page: Math.max(1, Math.floor(Number(params.page)) || 1),
-    pageSize: clampPageSize(params.size),
   }
 }
 

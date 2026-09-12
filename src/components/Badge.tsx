@@ -1,3 +1,5 @@
+import { vocabLabel } from '../lib/format.js'
+
 type Tone = 'neutral' | 'accent' | 'positive' | 'warning' | 'danger'
 
 export function Badge({
@@ -16,16 +18,21 @@ export function Badge({
 
 /** Stock state, coloured semantically rather than decoratively. */
 export function StockBadge({ available }: { available: boolean | null }) {
-  if (available === null) return <Badge tone="neutral">unknown</Badge>
+  if (available === null) return <Badge tone="neutral">Unknown</Badge>
   return available ? (
-    <Badge tone="positive">in stock</Badge>
+    <Badge tone="positive">In stock</Badge>
   ) : (
-    <Badge tone="danger">out of stock</Badge>
+    <Badge tone="danger">Out of stock</Badge>
   )
 }
 
 export function TierBadge({ tier }: { tier: string | null }) {
   const tone: Tone =
     tier === 'pro' ? 'accent' : tier === 'performance' ? 'warning' : 'neutral'
-  return <Badge tone={tone}>{tier ?? 'unknown'}</Badge>
+  return <Badge tone={tone}>{vocabLabel(tier)}</Badge>
+}
+
+/** A stored vocabulary code — play style, shape — rendered in words. */
+export function VocabBadge({ code }: { code: string | null }) {
+  return <Badge tone="neutral">{vocabLabel(code)}</Badge>
 }

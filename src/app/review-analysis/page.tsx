@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { resolveBrand } from '../../lib/queries.js'
 import { loadCoverage, loadEnrichedFacts, loadReviewFacts } from '../../lib/review-analysis.js'
@@ -20,6 +21,12 @@ import {
 } from '../../lib/review-stats.js'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Review analysis',
+  description:
+    'Leaderboard, momentum, perception, quality signals and competitive mentions, derived from the stored review corpus.',
+}
 
 interface SearchParams {
   panel?: string

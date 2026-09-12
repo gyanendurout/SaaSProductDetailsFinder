@@ -2,6 +2,20 @@ import 'server-only'
 import { db, selectAll } from './supabase.js'
 import { withRetry } from './retry.js'
 import { sanitiseTerm, toIlikeValue } from './review-search-term.js'
+import {
+  applyRatingPredicate,
+  facetScope,
+  hasNarrowingFilters,
+  meanRating,
+  tallyFacets,
+  type FacetCounts,
+  type ReviewFilter,
+  type ReviewSort,
+  type ScopeRow,
+} from './review-facets.js'
+
+export type { FacetCounts } from './review-facets.js'
+export { hasNarrowingFilters } from './review-facets.js'
 
 /**
  * Read layer for reviews.
@@ -58,25 +72,13 @@ export interface ReviewResponseRow {
   responded_at: string | null
 }
 
-export type ReviewSort = 'newest' | 'oldest' | 'rating_desc' | 'rating_asc' | 'helpful'
-
-export interface ReviewQuery {
-  q?: string
-  brand?: string
-  productId?: string
-  modelId?: string
-  rating?: number
-  /** 'positive' = 4 and up, 'negative' = 3 and below. The complaint filter. */
-  sentiment?: 'positive' | 'negative'
-  verifiedOnly?: boolean
-  withTextOnly?: boolean
-  withResponse?: boolean
-  from?: string
-  to?: string
-  sort?: ReviewSort
-  page?: number
-  pageSize?: number
-}
+/**
+ * The filter itself lives in review-facets.ts, so the rules about what a facet
+ * count means can be tested without a database behind them. Re-exported here
+ * because this is the module every caller already imports.
+ */
+export type ReviewQuery = ReviewFilter
+export type { ReviewSort } from './review-facets.js'
 
 export interface ReviewPage {
   rows: ReviewRow[]
@@ -178,7 +180,7 @@ function isRangeError(error: { code?: string; message?: string }): boolean {
  * escapes into a result type.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function applyReviewFilters(builder: any, query: ReviewQuery): any {
+function applyReviewFilters(builder: any, query: ReviewFilter): any {
   let q = builder
   if (query.brand) q = q.eq('brand_slug', query.brand)
   if (query.productId) q = q.eq('product_id', query.productId)
@@ -292,17 +294,91 @@ export async function getReviewFacets(query: ReviewQuery): Promise<ReviewFacets>
   ])
 
   const distribution = [one, two, three, four, five]
-  const rated = distribution.reduce((n, c) => n + c, 0)
-  const weighted = distribution.reduce((n, c, i) => n + c * (i + 1), 0)
 
   return {
     total,
     withText,
     withResponse,
     verified,
-    averageRating: rated > 0 ? weighted / rated : null,
+    // The bars deliberately ignore the star filter; the average must not.
+    // Filtering to one star used to leave "Average rating" reading 4.62 over a
+    // list containing nothing but one-star reviews, because it was the mean of
+    // these same unfiltered bars. Re-applying the predicate here is exact and
+    // costs no extra query — see applyRatingPredicate.
+    averageRating: meanRating(
+      applyRatingPredicate(distribution, query.rating, query.sentiment),
+    ),
     distribution,
   }
+}
+
+/**
+ * How many rows each brand and each product would return under the filters that
+ * are actually on.
+ *
+ * Returns null when nothing but brand and product is active, which is the case
+ * on most page loads. The pre-aggregated views are exactly right then, and this
+ * read is worth several seconds, so the caller keeps using them.
+ *
+ * The numbers beside the chips were previously always the whole-corpus totals.
+ * Searching "delaminate" left the Perseus chip advertising 306 and returning 4,
+ * and the rail kept insisting Selkirk had 6,161 reviews no matter what was
+ * filtered — which is the specific way a facet count misleads: it looks like a
+ * promise about the click.
+ */
+export async function getFacetCounts(query: ReviewQuery): Promise<FacetCounts | null> {
+  if (!hasNarrowingFilters(query)) return null
+
+  const scope = facetScope(query)
+  const rows = await fetchScopeRows(scope)
+  return tallyFacets(rows, query)
+}
+
+/**
+ * Two columns, every matching row, read in parallel.
+ *
+ * Sequential paging spends its whole time waiting: 21 round trips at ~750ms is
+ * most of a minute. The same requests eight at a time land in about three
+ * seconds. PAGE is 1000 because that is where PostgREST caps a range regardless
+ * of what is asked for.
+ */
+const SCOPE_PAGE = 1000
+const SCOPE_CONCURRENCY = 8
+
+async function fetchScopeRows(scope: ReviewFilter): Promise<ScopeRow[]> {
+  const total = await withRetry(async () => {
+    const base = db().from('v_review_search').select('review_id', { count: 'exact', head: true })
+    const { count, error } = await applyReviewFilters(base, scope)
+    if (error) throw new Error(error.message)
+    return count ?? 0
+  }, 'facetScopeCount')
+
+  const pages = Math.ceil(total / SCOPE_PAGE)
+  if (pages === 0) return []
+
+  const chunks: ScopeRow[][] = Array.from({ length: pages })
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(SCOPE_CONCURRENCY, pages) }, async () => {
+      for (;;) {
+        const index = next++
+        if (index >= pages) return
+        chunks[index] = await withRetry(async () => {
+          const base = db().from('v_review_search').select('product_id,brand_slug')
+          const { data, error } = await applyReviewFilters(base, scope)
+            // Ordered by a unique key. Without one, LIMIT/OFFSET paging is free
+            // to return a row twice and skip another: the same read measured
+            // 20,771 rows of which only 20,352 were distinct.
+            .order('review_id', { ascending: true })
+            .range(index * SCOPE_PAGE, index * SCOPE_PAGE + SCOPE_PAGE - 1)
+          if (error) throw new Error(error.message)
+          return (data ?? []) as unknown as ScopeRow[]
+        }, 'facetScopePage')
+      }
+    }),
+  )
+
+  return chunks.flat()
 }
 
 export interface ReviewBrandCount {

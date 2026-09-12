@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import {
   getModel,
@@ -18,6 +19,28 @@ export const dynamic = 'force-dynamic'
  * here rather than caught later, because a bad shape is not a lookup failure.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The model's own name in the tab and in a shared link's preview.
+ *
+ * Every page carried the same title, which is worst here: a dashboard user
+ * comparing three paddles has three tabs that are indistinguishable from each
+ * other and from every other page on the site.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const { id } = await params
+  if (!UUID.test(id)) return { title: 'Model not found' }
+  const model = await getModel(id).catch(() => null)
+  if (!model) return { title: 'Model not found' }
+  return {
+    title: `${model.model_name} · ${model.brand}`,
+    description: `Prices, variants, stock and review history for the ${model.brand} ${model.model_name}.`,
+  }
+}
 
 export default async function ModelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

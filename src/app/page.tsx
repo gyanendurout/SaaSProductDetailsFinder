@@ -8,6 +8,7 @@ import {
   resolveBrand,
 } from '../lib/queries.js'
 import { Badge, StockBadge } from '../components/Badge'
+import { When } from '../components/When'
 import { fmtMoney, fmtWhen, eventLabel, eventTone } from '../lib/format.js'
 
 export const dynamic = 'force-dynamic'
@@ -84,7 +85,11 @@ export default async function OverviewPage({
         <div className="stat">
           <div className="stat-label">Last crawl</div>
           <div className="stat-value" style={{ fontSize: '1.1rem', paddingTop: '.5rem' }}>
-            {overview.lastRun ? fmtWhen(overview.lastRun.started_at) : '—'}
+            {/* Same instant, same rounding and the same tooltip as Pipeline's
+                "Last run" — the two used to be separately formatted and could
+                round either side of an hour boundary, which read as the pages
+                disagreeing about when the crawl ran. */}
+            <When iso={overview.lastRun?.started_at} />
           </div>
           <div className="stat-note">
             {overview.lastRun ? (

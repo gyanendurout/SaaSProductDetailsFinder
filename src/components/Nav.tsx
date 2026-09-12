@@ -45,7 +45,15 @@ export function Nav() {
         const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href)
         const href = brand && BRAND_AWARE.has(link.href) ? `${link.href}?brand=${brand}` : link.href
         return (
-          <Link key={link.href} className="rail-item" href={href} data-active={active}>
+          <Link
+            key={link.href}
+            className="rail-item"
+            href={href}
+            data-active={active}
+            // data-active only styles it. aria-current is what tells a screen
+            // reader which of the eight views is the one being read.
+            aria-current={active ? 'page' : undefined}
+          >
             <span className="rail-item-name">{link.label}</span>
           </Link>
         )

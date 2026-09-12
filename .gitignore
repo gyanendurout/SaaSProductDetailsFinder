@@ -25,3 +25,7 @@ Thumbs.db
 # Scratch scripts used while debugging; the real ones are checked in by name.
 scripts/_*
 graphify-out/
+
+# Local scratch space — probe scripts, screenshots, dev logs.
+# Nothing here is part of the build or the history.
+scratchpad/

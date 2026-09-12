@@ -1,10 +1,18 @@
+import type { Metadata } from 'next'
 import { getRuns } from '../../lib/queries.js'
 import { db } from '../../lib/supabase.js'
 import { Badge } from '../../components/Badge'
 import { RunCrawlButton } from '../../components/RunCrawlButton'
 import { fmtWhen } from '../../lib/format.js'
+import { When } from '../../components/When'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Pipeline',
+  description:
+    'Crawl run history and collection health — what ran, what it wrote, and what failed.',
+}
 
 interface CrawlErrorRow {
   id: string
@@ -16,17 +24,29 @@ interface CrawlErrorRow {
   created_at: string
 }
 
-export default async function PipelinePage() {
-  const runs = await getRuns(30)
+const RUN_LIMIT = 30
+const ERROR_LIMIT = 30
 
-  const { data: errorRows } = await db()
-    .from('crawl_errors')
-    .select('id,run_id,stage,target,error_type,error_message,created_at')
-    .order('created_at', { ascending: false })
-    .limit(30)
-  const errors = (errorRows ?? []) as CrawlErrorRow[]
+export default async function PipelinePage() {
+  // Counted as well as listed. "Runs recorded: 22" beside "across the last 30
+  // runs" was two different claims about the same thing: 22 was how many rows
+  // the page had loaded, 30 was the LIMIT on an entirely separate query that
+  // caps ERRORS, not runs. Neither number was the number of crawls that have
+  // happened, which is the one a reader is looking for.
+  const [runs, errorRows, totalRuns, totalErrors] = await Promise.all([
+    getRuns(RUN_LIMIT),
+    db()
+      .from('crawl_errors')
+      .select('id,run_id,stage,target,error_type,error_message,created_at')
+      .order('created_at', { ascending: false })
+      .limit(ERROR_LIMIT),
+    countRows('crawl_runs'),
+    countRows('crawl_errors'),
+  ])
+  const errors = (errorRows.data ?? []) as CrawlErrorRow[]
 
   const done = runs.filter((r) => r.status === 'done').length
+  const truncated = totalRuns > runs.length
 
   return (
     <>
@@ -53,13 +73,16 @@ export default async function PipelinePage() {
       <div className="stats">
         <div className="stat">
           <div className="stat-label">Runs recorded</div>
-          <div className="stat-value">{runs.length}</div>
-          <div className="stat-note">{done} completed cleanly</div>
+          <div className="stat-value">{totalRuns.toLocaleString()}</div>
+          <div className="stat-note">
+            {done} of the {runs.length} shown below completed cleanly
+          </div>
         </div>
         <div className="stat">
-          <div className="stat-label">Last run</div>
+          <div className="stat-label">Last crawl</div>
           <div className="stat-value" style={{ fontSize: '1.1rem', paddingTop: '.5rem' }}>
-            {runs[0] ? fmtWhen(runs[0].started_at) : '—'}
+            {/* Labelled and formatted exactly as the Overview's card. */}
+            <When iso={runs[0]?.started_at} />
           </div>
           <div className="stat-note">
             {runs[0] ? (
@@ -70,9 +93,13 @@ export default async function PipelinePage() {
           </div>
         </div>
         <div className="stat" data-tone={errors.length ? 'danger' : undefined}>
-          <div className="stat-label">Recent errors</div>
-          <div className="stat-value">{errors.length}</div>
-          <div className="stat-note">across the last 30 runs</div>
+          <div className="stat-label">Errors logged</div>
+          <div className="stat-value">{totalErrors.toLocaleString()}</div>
+          <div className="stat-note">
+            {totalErrors === 0
+              ? 'none recorded'
+              : `most recent ${Math.min(ERROR_LIMIT, totalErrors)} listed below`}
+          </div>
         </div>
       </div>
 
@@ -80,7 +107,12 @@ export default async function PipelinePage() {
         <div className="section-head">
           <h2>Run history</h2>
         </div>
-        <div className="table-wrap">
+        {truncated && (
+          <p className="muted" style={{ marginTop: 0 }}>
+            The {RUN_LIMIT} most recent of {totalRuns.toLocaleString()} runs.
+          </p>
+        )}
+        <div className="table-wrap" role="region" aria-label="Run history">
           <table>
             <thead>
               <tr>
@@ -98,7 +130,9 @@ export default async function PipelinePage() {
             <tbody>
               {runs.map((r) => (
                 <tr key={r.id}>
-                  <td className="faint">{fmtWhen(r.started_at)}</td>
+                  <td className="faint">
+                    <When iso={r.started_at} />
+                  </td>
                   <td className="muted">{r.run_type}</td>
                   <td>
                     <Badge tone={statusTone(r.status)}>{r.status}</Badge>
@@ -175,4 +209,10 @@ function duration(start: string, end: string | null): string {
   const secs = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000)
   if (secs < 60) return `${secs}s`
   return `${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
+/** An exact row count, without pulling a single row across to get it. */
+async function countRows(table: string): Promise<number> {
+  const { count } = await db().from(table).select('id', { count: 'exact', head: true })
+  return count ?? 0
 }

@@ -1,6 +1,7 @@
 import 'server-only'
 import { db, selectAll } from './supabase.js'
 import { withRetry } from './retry.js'
+import { CHANGE_EVENT_TYPES } from './format.js'
 
 /**
  * Read layer for the dashboard.
@@ -187,21 +188,108 @@ export async function getDiscounts(limit = 60, brandSlug?: string): Promise<Vari
     .slice(0, limit)
 }
 
+const CHANGE_COLUMNS =
+  'id,event_type,occurred_at,old_value,new_value,delta_numeric,delta_pct,sku,variant_title,' +
+  'core_thickness_mm,colorway,product_title,product_url,model_name,skill_tier,brand'
+
 export async function getChanges(limit = 100, brandSlug?: string): Promise<ChangeEvent[]> {
-  return withRetry(async () => {
+  return (await getChangePage(1, limit, brandSlug)).rows
+}
+
+export interface ChangePage {
+  rows: ChangeEvent[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+/**
+ * One page of the change log, and how many there are in total.
+ *
+ * The page used to take the most recent 250 and say nothing about it. That is
+ * the worst kind of truncation: 250 rows look like a complete answer, the
+ * summary chips above them were counted from those 250 alone, and the log had
+ * 4,000+ events behind it. Someone reading "sale started · 31" was reading a
+ * property of the page size, not of the catalogue.
+ *
+ * Ordered explicitly. The view carries its own ORDER BY, but LIMIT/OFFSET over
+ * an unordered outer query is free to repeat a row on one page and skip it on
+ * the next — which is exactly what the reviews list was doing before it was
+ * given a unique tiebreaker.
+ */
+export async function getChangePage(
+  page: number,
+  pageSize: number,
+  brandSlug?: string,
+): Promise<ChangePage> {
+  const safePage = Math.max(1, Math.floor(page) || 1)
+  const safeSize = Math.min(200, Math.max(1, Math.floor(pageSize) || 50))
+  const offset = (safePage - 1) * safeSize
+
+  const result = await withRetry(async () => {
     let q = db()
       .from('v_recent_changes')
-      .select(
-        'id,event_type,occurred_at,old_value,new_value,delta_numeric,delta_pct,sku,variant_title,' +
-          'core_thickness_mm,colorway,product_title,product_url,model_name,skill_tier,brand',
-      )
-      .limit(limit)
+      .select(CHANGE_COLUMNS, { count: 'exact' })
+      .order('occurred_at', { ascending: false })
+      .order('id', { ascending: false })
     if (brandSlug) q = q.eq('brand_slug', brandSlug)
-    const { data, error } = await q
+    const { data, error, count } = await q.range(offset, offset + safeSize - 1)
+    // A range past the end is answered with 416 rather than an empty page.
+    if (error && (error.code === 'PGRST103' || /range not satisfiable/i.test(error.message)))
+      return null
     if (error) throw new Error(error.message)
-    return (data ?? []) as unknown as ChangeEvent[]
-  }, 'getChanges')
+    return { rows: (data ?? []) as unknown as ChangeEvent[], count: count ?? 0 }
+  }, 'getChangePage')
+
+  if (result) return { rows: result.rows, total: result.count, page: safePage, pageSize: safeSize }
+
+  // Past the end: serve the last real page rather than an error boundary.
+  const total = await countChanges(brandSlug)
+  const last = Math.max(1, Math.ceil(total / safeSize))
+  if (last === safePage) return { rows: [], total, page: last, pageSize: safeSize }
+  return getChangePage(last, safeSize, brandSlug)
 }
+
+async function countChanges(brandSlug?: string): Promise<number> {
+  return withRetry(async () => {
+    let q = db().from('v_recent_changes').select('id', { count: 'exact', head: true })
+    if (brandSlug) q = q.eq('brand_slug', brandSlug)
+    const { count, error } = await q
+    if (error) throw new Error(error.message)
+    return count ?? 0
+  }, 'countChanges')
+}
+
+/**
+ * How many events of each kind exist for this brand — over the whole log, not
+ * over the page being shown.
+ *
+ * One head-count per type rather than one read of everything: there are eleven
+ * types, each count crosses no rows at all, and the alternative is pulling
+ * thousands of rows to group them in JavaScript.
+ */
+export async function getChangeTypeCounts(
+  brandSlug?: string,
+): Promise<Array<{ type: string; count: number }>> {
+  const counted = await Promise.all(
+    CHANGE_EVENT_TYPES.map(async (type) => {
+      const count = await withRetry(async () => {
+        let q = db()
+          .from('v_recent_changes')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_type', type)
+        if (brandSlug) q = q.eq('brand_slug', brandSlug)
+        const { count: n, error } = await q
+        if (error) throw new Error(error.message)
+        return n ?? 0
+      }, 'changeTypeCount')
+      return { type, count }
+    }),
+  )
+  return counted.filter((c) => c.count > 0).sort((a, b) => b.count - a.count)
+}
+
+
 
 export async function getRuns(limit = 25): Promise<CrawlRun[]> {
   return withRetry(async () => {

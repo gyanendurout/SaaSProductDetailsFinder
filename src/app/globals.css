@@ -362,7 +362,14 @@ main {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1px;
-  background: var(--rule);
+  /* Transparent, not --rule.
+     The hairlines between cards used to be the grid's own background showing
+     through a 1px gap. That works only while the cells fill the row: with five
+     stats in a row that fits six, the sixth slot had nothing over it and the
+     rule colour rendered as a solid grey block that looked like a card which
+     had failed to load. The lines are now drawn by each card instead, so an
+     unused slot is simply empty. */
+  background: transparent;
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -370,6 +377,10 @@ main {
 }
 .stat {
   background: var(--surface);
+  /* Draws the hairline the grid background used to provide. Spread is 1px and
+     the grid gap is 1px, so neighbouring cards share one line rather than
+     stacking two. */
+  box-shadow: 0 0 0 1px var(--rule);
   padding: var(--gap) var(--gap);
 }
 .stat-label {
@@ -732,4 +743,75 @@ tbody tr:hover {
   height: 1em;
   border-radius: 2px;
   background: var(--brand-color, var(--ink-faint));
+}
+
+/* ---------------------------------------------------------------------------
+   Wide tables
+   ---------------------------------------------------------------------------
+   A .table-wrap scrolls sideways when the table is wider than the column. That
+   scroll was mouse-only: the container had no tabindex, so a keyboard user
+   could reach every link inside the table and still never reach the columns
+   that were off-screen. The pages now mark each wrapper as a focusable region;
+   this gives that focus a visible ring, because a focusable thing with no focus
+   style is worse than one that cannot be focused at all.
+--------------------------------------------------------------------------- */
+.table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Header row stays put while a long table scrolls.
+   On a hundred-row change log the headers are off-screen for all but the first
+   few rows, which leaves "179.99" in a column the reader can no longer name.
+
+   The header sticks to .table-wrap, which means .table-wrap has to be what
+   scrolls. It cannot instead stick to the viewport: `overflow-x: auto` already
+   makes the wrapper a scroll container, and a sticky box is positioned against
+   its nearest scrolling ancestor. `overflow-y: clip` looks like the escape but
+   is not one — CSS Overflow 3 computes `clip` to `hidden` whenever the other
+   axis is anything but visible or clip, so the wrapper stays a scroll container
+   either way and the header just scrolls off with the rows.
+
+   max-height rather than a fixed one, so this costs nothing on the many short
+   tables here: a table that fits never reaches the limit, never gets a
+   scrollbar, and its header never has anything to stick to. Only the long ones
+   change behaviour. */
+.table-wrap {
+  max-height: calc(100vh - var(--masthead-h) - 3rem);
+  overflow: auto;
+}
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  /* A sticky cell cannot use border-bottom: the border belongs to the cell's own
+     box, so rows scroll over the top of it. An inset shadow draws inside the
+     padding box and stays put. */
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+
+/* ---------------------------------------------------------------------------
+   Skip link
+   ---------------------------------------------------------------------------
+   The shell puts a brand rail and an eight-item nav before the content, so
+   reaching the page itself by keyboard took a dozen tabs on every navigation.
+   Visible only while focused, which is the one time it is useful.
+--------------------------------------------------------------------------- */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
 }

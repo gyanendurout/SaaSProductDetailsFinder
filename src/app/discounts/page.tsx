@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getDiscounts,
   resolveBrand,
@@ -6,6 +7,12 @@ import { Badge, StockBadge } from '../../components/Badge'
 import { fmtMoney, fmtWhen } from '../../lib/format.js'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Discounts',
+  description:
+    'Every SKU currently discounted, with how deep the cut is and what it was before.',
+}
 
 export default async function DiscountsPage({
   searchParams,

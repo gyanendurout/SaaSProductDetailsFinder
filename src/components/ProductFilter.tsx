@@ -14,6 +14,12 @@ interface ProductFilterProps {
   products: ProductFilterOption[]
   allHref: string
   activeId?: string
+  /**
+   * True when the counts were recomputed against the filters that are on, so
+   * the wording can say what they count. They used to be whole-corpus totals
+   * whatever was filtered, which made a chip advertising 306 return 4.
+   */
+  scoped?: boolean
 }
 
 /**
@@ -29,7 +35,7 @@ interface ProductFilterProps {
  * Matching is accent- and case-insensitive and matches on any word boundary, so
  * "boom" finds "LABS Project Boomstik®" and "pro v" finds "Graf Pro V".
  */
-export function ProductFilter({ products, allHref, activeId }: ProductFilterProps) {
+export function ProductFilter({ products, allHref, activeId, scoped }: ProductFilterProps) {
   const [term, setTerm] = useState('')
 
   const normalised = useMemo(
@@ -77,7 +83,9 @@ export function ProductFilter({ products, allHref, activeId }: ProductFilterProp
       <p className="product-search-count muted" aria-live="polite">
         {term
           ? `${matches.length} of ${products.length} products match “${term}”`
-          : `${products.length} products with reviews`}
+          : scoped
+            ? `${products.length} products have reviews matching the current filters`
+            : `${products.length} products with reviews`}
       </p>
 
       <div className="chips">
@@ -93,7 +101,10 @@ export function ProductFilter({ products, allHref, activeId }: ProductFilterProp
 
       {term && matches.length === 0 && (
         <p className="empty-inline muted">
-          No product matches “{term}”. Only products with reviews stored against them are listed.
+          No product matches “{term}”.{' '}
+          {scoped
+            ? 'Only products with reviews matching the current filters are listed.'
+            : 'Only products with reviews stored against them are listed.'}
         </p>
       )}
     </details>

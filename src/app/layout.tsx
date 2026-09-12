@@ -4,12 +4,24 @@ import './globals.css'
 import './reviews.css'
 import './prices.css'
 import { Nav } from '../components/Nav'
+import { TableScroll } from '../components/TableScroll'
 import { BrandSwitcher, type BrandScopeOption } from '../components/BrandSwitcher'
 import { getBrandSummaries } from '../lib/queries.js'
 import { getReviewBrandCounts } from '../lib/review-queries.js'
 
+/**
+ * The default, and the template every page's own title is poured into.
+ *
+ * Every page used to share this one title exactly, so eight open tabs read
+ * "Product Finder" eight times, browser history was unnavigable and a shared
+ * link previewed as the site rather than the page. Pages now export their own
+ * `metadata`; `%s` is where it lands.
+ */
 export const metadata: Metadata = {
-  title: 'Product Finder',
+  title: {
+    default: 'Product Finder',
+    template: '%s · Product Finder',
+  },
   description:
     'Catalogue, assortment and price intelligence across tracked paddle brands.',
 }
@@ -46,6 +58,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // the tree still surface normally.
     <html lang="en" suppressHydrationWarning>
       <body>
+        {/* First thing in the tab order: the rail and an eight-item nav sit
+            before the content, so reaching the page itself took a dozen tabs on
+            every navigation. Visible only while focused. */}
+        <a className="skip-link" href="#main">
+          Skip to content
+        </a>
+        {/* Renders nothing. Marks wide tables as focusable regions, but only
+            the ones that actually overflow — see the component. */}
+        <TableScroll />
         <div className="shell">
           <header className="masthead">
             <div className="masthead-inner">
@@ -72,7 +93,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </aside>
 
             <div className="shell-content">
-              <main>{children}</main>
+              <main id="main" tabIndex={-1}>
+                {children}
+              </main>
 
               <footer className="foot">
                 Data collected from public storefront endpoints. Prices shown in each

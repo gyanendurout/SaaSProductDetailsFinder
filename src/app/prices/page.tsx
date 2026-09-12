@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
+import { resolveBrand } from '../../lib/queries.js'
 import {
   getBrandPriceComparison,
   PRICE_TIERS,
@@ -8,6 +10,12 @@ import {
 import { fmtMoney } from '../../lib/format.js'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Price comparison',
+  description:
+    'The price band each tracked brand occupies — floor, median, ceiling — and how its range divides across fixed price tiers.',
+}
 
 interface SearchParams {
   basis?: string
@@ -21,7 +29,12 @@ export default async function PricesPage({
 }) {
   const params = await searchParams
   const basis: PriceBasis = params.basis === 'sku' ? 'sku' : 'product'
-  const comparison = await getBrandPriceComparison(basis)
+  // Resolved so the notice can name the brand, and so a link carrying a display
+  // name rather than a slug still highlights the right row.
+  const [comparison, scope] = await Promise.all([
+    getBrandPriceComparison(basis),
+    resolveBrand(params.brand),
+  ])
 
   const span = Math.max(1, comparison.ceiling - comparison.floor)
   const pct = (value: number) => ((value - comparison.floor) / span) * 100
@@ -46,6 +59,16 @@ export default async function PricesPage({
           market is at the top of the table.
         </p>
       </header>
+
+      {scope && (
+        <div className="notice">
+          <strong>This page always compares every brand.</strong> A brand band only means
+          something beside the others, so the rail&rsquo;s {scope.name} scope highlights
+          {' '}{scope.name}&rsquo;s row rather than hiding the rest. To see {scope.name}
+          {' '}alone, open its{' '}
+          <Link href={`/catalogue?brand=${scope.slug}`}>catalogue</Link>.
+        </div>
+      )}
 
       <div className="filters">
         <div className="filter-group">
@@ -74,7 +97,7 @@ export default async function PricesPage({
         )}
       </p>
 
-      <div className="table-wrap">
+      <div className="table-wrap" role="region" aria-label="Brand price bands">
         <table className="price-table">
           <thead>
             <tr>
@@ -89,7 +112,7 @@ export default async function PricesPage({
           </thead>
           <tbody>
             {comparison.bands.map((band) => (
-              <tr key={band.brandSlug} data-scoped={params.brand === band.brandSlug}>
+              <tr key={band.brandSlug} data-scoped={scope?.slug === band.brandSlug}>
                 <td className="brand-cell">
                   <Link href={`/catalogue?brand=${band.brandSlug}`}>{band.brand}</Link>
                 </td>

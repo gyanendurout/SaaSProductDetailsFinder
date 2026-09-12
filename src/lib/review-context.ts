@@ -73,15 +73,64 @@ export function ownershipBucket(context: Record<string, unknown> | null): string
   return value && value.trim() ? value.trim() : null
 }
 
-/** Rough ordering for ownership buckets, so a chart reads left to right. */
+/**
+ * Ordering for ownership buckets, shortest first.
+ *
+ * The patterns this matched were written from what Bazaarvoice's documentation
+ * calls these options in prose — "less than a month", "1-6 months". What it
+ * actually stores are codes: 1week, 1month, 3months, 6months, 1year. Not one of
+ * them matched, so every bucket tied on the fallback and the table fell back to
+ * the order the rows happened to arrive in — which is corpus order, and so
+ * roughly descending by volume.
+ *
+ * That was worse than an arbitrary order, because the table's caption tells the
+ * reader to compare the FIRST row with the LAST as new owners against long-term
+ * owners. It was inviting a durability reading of a popularity sort. In the
+ * corpus as it stands that put "1week" second rather than first.
+ *
+ * The prose patterns are kept alongside the codes: Bazaarvoice's own reporting
+ * exports use them, so a future backfill may well arrive in that shape. They are
+ * written with separators already stripped, because the bucket is normalised
+ * before it is matched — '1-6 months' is compared as '16months'.
+ *
+ * Order within the list is load-bearing: '16months' contains '6months', so the
+ * 1-6 bucket has to be tested before the 6-12 one.
+ */
 export function ownershipRank(bucket: string): number {
-  const b = bucket.toLowerCase()
-  if (b.includes('less than a month') || b.includes('< 1 month')) return 0
-  if (b.includes('1-6') || b.includes('1 to 6')) return 1
-  if (b.includes('6-12') || b.includes('6 to 12')) return 2
-  if (b.includes('1-2 year') || b.includes('more than a year') || b.includes('1+')) return 3
-  if (b.includes('more than 2') || b.includes('2+')) return 4
-  return 5
+  const b = bucket.toLowerCase().replace(/[\s_-]+/g, '')
+  for (let i = 0; i < OWNERSHIP_ORDER.length; i++) {
+    if (OWNERSHIP_ORDER[i]!.match.some((m) => b.includes(m))) return i
+  }
+  return OWNERSHIP_ORDER.length
+}
+
+/**
+ * Shortest to longest, with the stored code and the prose form side by side.
+ *
+ * `label` says only what the stored value says. Bazaarvoice does not record
+ * whether "1month" means "about a month" or "up to a month", and inventing a
+ * comparator would put a claim in the table that the data does not carry.
+ */
+const OWNERSHIP_ORDER: ReadonlyArray<{ match: string[]; label: string }> = [
+  { match: ['lessthanaweek', '<1week', '1week'], label: '1 week' },
+  { match: ['lessthanamonth', '<1month', '1month'], label: '1 month' },
+  { match: ['3months', '1to6months', '16months'], label: '3 months' },
+  { match: ['6months', '6to12months', '612months'], label: '6 months' },
+  { match: ['1year', '12year', 'morethanayear'], label: '1 year' },
+  { match: ['2years', 'morethan2', '2+'], label: '2 years or more' },
+]
+
+/**
+ * An ownership bucket in words.
+ *
+ * The column printed the stored code — a reader met "1month" and "3months" in a
+ * table of otherwise ordinary English. An unrecognised code is returned as it
+ * is rather than guessed at: showing an unknown value plainly is honest, and
+ * mislabelling it is not.
+ */
+export function ownershipLabel(bucket: string): string {
+  const rank = ownershipRank(bucket)
+  return OWNERSHIP_ORDER[rank]?.label ?? bucket
 }
 
 export function demographic(

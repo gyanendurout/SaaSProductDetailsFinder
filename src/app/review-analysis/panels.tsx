@@ -10,7 +10,8 @@ import {
   type DatedPoint,
 } from '../../lib/review-trends.js'
 import { DEFECT_TERMS, PADDLE_BRANDS } from '../../lib/review-text.js'
-import { ownershipRank } from '../../lib/review-context.js'
+import { ownershipLabel, ownershipRank } from '../../lib/review-context.js'
+import { vocabLabel } from '../../lib/format.js'
 
 const pct = (f: number) => `${Math.round(f * 100)}%`
 const signed = (f: number) => `${f > 0 ? '+' : ''}${Math.round(f * 100)}%`
@@ -356,7 +357,13 @@ export function PerceptionPanel({ facts }: { facts: EnrichedFact[] }) {
   }
   const ownRows = [...own]
     .map(([bucket, o]) => ({ bucket, ...o, avg: o.rated ? o.sum / o.rated : null }))
-    .sort((a, b) => ownershipRank(a.bucket) - ownershipRank(b.bucket))
+    // Rank first, then the bucket itself. A tie on rank means two values the
+    // ordering does not recognise, and leaving those in arrival order is what
+    // made this table read as a volume sort.
+    .sort(
+      (a, b) =>
+        ownershipRank(a.bucket) - ownershipRank(b.bucket) || a.bucket.localeCompare(b.bucket),
+    )
 
   if (withPerception.length === 0 && withOwnership.length === 0 && withReturning.length === 0) {
     return (
@@ -416,9 +423,9 @@ export function PerceptionPanel({ facts }: { facts: EnrichedFact[] }) {
                     <th scope="row">
                       <Link href={`/reviews?model=${r.id}`}>{r.name}</Link>
                     </th>
-                    <td>{r.claimed}</td>
+                    <td>{vocabLabel(r.claimed)}</td>
                     <td data-tone={r.agrees ? undefined : 'danger'}>
-                      {r.top}
+                      {vocabLabel(r.top)}
                       {r.agrees ? '' : ' ✕'}
                     </td>
                     <td className="num">{pct(r.power / r.total)}</td>
@@ -519,7 +526,7 @@ export function PerceptionPanel({ facts }: { facts: EnrichedFact[] }) {
                 <tbody>
                   {ownRows.map((r) => (
                     <tr key={r.bucket}>
-                      <th scope="row">{r.bucket}</th>
+                      <th scope="row">{ownershipLabel(r.bucket)}</th>
                       <td className="num">{r.n.toLocaleString()}</td>
                       <td className="num">{r.avg === null ? '—' : r.avg.toFixed(2)}</td>
                     </tr>
