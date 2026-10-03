@@ -244,7 +244,7 @@
 
 .review-proscons {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
   gap: var(--gap-tight) var(--gap);
   margin: var(--gap-tight) 0 0;
   font-size: var(--text-sm);
@@ -578,7 +578,11 @@
  * ------------------------------------------------------------------------- */
 .board-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* min(), not a bare length: auto-fit honours the minimum even when the column
+     is narrower than it, which on a 320px screen pushed this grid 48px past the
+     edge of the page. With min() the track gives way when there is less room
+     than the ideal width. */
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--gap);
   margin-bottom: var(--gap-section);
 }
@@ -671,7 +675,7 @@
 
 .split-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   gap: var(--gap);
   align-items: start;
   margin-bottom: var(--gap-section);
@@ -771,7 +775,9 @@ td[data-tone='danger'],
  * and it keeps these panels as pure server components.
  * ------------------------------------------------------------------------- */
 .infotip {
-  position: relative;
+  /* Deliberately not positioned: the panel anchors to the enclosing
+     .section-head instead, so its width and placement come from the card
+     rather than from wherever in the heading the mark happens to land. */
   display: inline-flex;
   vertical-align: middle;
   margin-left: 0.4rem;
@@ -803,7 +809,12 @@ td[data-tone='danger'],
   top: calc(100% + 0.5rem);
   left: 0;
   z-index: 40;
-  width: min(30rem, 78vw);
+  /* Anchored to the heading's left edge and never wider than the heading. The
+     card is on the screen, so the panel is too — at any window width, for a
+     mark anywhere along the heading. Hanging it off the mark instead is what
+     put a 30rem panel at x=627 in a 901px window, running 206px past the right
+     edge, and what made the flip rule below necessary in the first place. */
+  width: min(30rem, 100%);
   padding: var(--gap);
   background: var(--surface);
   border: 1px solid var(--rule-strong);
@@ -816,26 +827,45 @@ td[data-tone='danger'],
   color: var(--ink);
   text-align: left;
   letter-spacing: normal;
-  /* Hidden by clipping rather than display:none so the box is already laid out
-     when it appears and cannot reflow the row underneath it. */
+  /* Taken out of layout entirely while closed, not merely made invisible.
+     A visibility:hidden box still has a size and a position, and a box that
+     sticks out past the right edge still counts towards the document's
+     scrollable overflow — so eighteen closed 30rem panels gave every page
+     carrying one a sideways scrollbar with nothing visible out there to scroll
+     to. /trends scrolled to 899px inside a 768px window on that alone.
+
+     display:none has no such effect, and the original reason for avoiding it
+     does not apply: this box is absolutely positioned, so it is out of flow and
+     cannot reflow the row underneath it whichever way it is hidden. The fade is
+     kept with allow-discrete, which lets display animate alongside opacity;
+     where a browser does not support that pair the panel simply appears at
+     once, which is the correct thing to lose. */
+  display: none;
   opacity: 0;
-  visibility: hidden;
   transform: translateY(-3px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    display 120ms allow-discrete;
 }
 .infotip:hover .infotip-body,
 .infotip:focus .infotip-body,
 .infotip:focus-within .infotip-body {
+  display: block;
   opacity: 1;
-  visibility: visible;
   transform: translateY(0);
 }
-/* Near the right edge the box would otherwise run off the page. */
-.split-grid > :last-child .infotip-body,
-.board-grid > :last-child .infotip-body {
-  left: auto;
-  right: 0;
+@starting-style {
+  .infotip:hover .infotip-body,
+  .infotip:focus .infotip-body,
+  .infotip:focus-within .infotip-body {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
+/* The right-edge flip that used to live here is gone: a panel measured from the
+   card cannot reach the edge, and the flip itself misfired in a narrow column —
+   right: 0 on a 360px card put a 30rem panel at x=-41. */
 .infotip-eg {
   display: block;
   margin-top: var(--gap-tight);

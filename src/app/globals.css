@@ -360,7 +360,7 @@ main {
    ---------------------------------------------------------------------- */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: 1px;
   /* Transparent, not --rule.
      The hairlines between cards used to be the grid's own background showing
@@ -423,6 +423,11 @@ main {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--gap);
+  /* Containing block for .infotip-body. Every info tip in the app sits in one
+     of these headings, and a heading always spans its whole card, so anchoring
+     the explanation here is what guarantees it opens somewhere on the screen —
+     see the note on .infotip-body in reviews.css. */
+  position: relative;
   border-bottom: 1px solid var(--rule-strong);
   padding-bottom: var(--gap-tight);
   margin-bottom: var(--gap);
@@ -593,7 +598,7 @@ tbody tr:hover {
    ---------------------------------------------------------------------- */
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(min(240px, 100%), 1fr);
   gap: var(--gap-section);
   align-items: start;
 }
@@ -839,7 +844,7 @@ thead th {
 
 .churn-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: var(--gap);
 }
 .churn-card h3 {
