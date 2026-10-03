@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/catalogue', label: 'Catalogue' },
   { href: '/reviews', label: 'Reviews' },
   { href: '/review-analysis', label: 'Review analysis' },
+  { href: '/trends', label: 'Trends' },
   { href: '/prices', label: 'Prices' },
   { href: '/discounts', label: 'Discounts' },
   { href: '/changes', label: 'Changes' },
